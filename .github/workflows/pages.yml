@@ -40,11 +40,11 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flet==0.85.3 flet-audio==0.85.3
+          python -m pip install --upgrade flet flet-audio "pillow>=10.0.0"
 
       - name: Construir version web
         run: |
-          flet build web --base-url /ce19/ --yes --no-rich-output
+          flet build web --base-url /ce19/ --yes --no-rich-output --skip-flutter-doctor
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v5

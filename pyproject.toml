@@ -3,7 +3,8 @@ name = "codigo-escondido-19"
 version = "1.0.0"
 description = "CODIGO ESCONDIDO 19"
 dependencies = [
-    "flet-audio==0.85.3",
+    "flet",
+    "flet-audio",
     "pillow>=10.0.0",
 ]
 

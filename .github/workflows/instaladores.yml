@@ -43,11 +43,11 @@ jobs:
       - name: Instalar Flet
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flet==0.85.3 flet-audio==0.85.3 "pillow>=10.0.0"
+          python -m pip install --upgrade flet flet-audio "pillow>=10.0.0"
 
       - name: Construir APK
         run: |
-          flet build apk --project codigo_escondido_19 --artifact "CODIGO ESCONDIDO 19" --product "CODIGO ESCONDIDO 19" --description "Aplicacion Codigo Escondido 19" --company "CODIGO ESCONDIDO 19" --org com.flet --bundle-id com.flet.app_ce_19 --android-adaptive-icon-background "#71106F" --splash-color "#71106F" --splash-dark-color "#71106F" --build-version 1.0.0 --no-rich-output --yes
+          flet build apk --project codigo_escondido_19 --artifact "CODIGO ESCONDIDO 19" --product "CODIGO ESCONDIDO 19" --description "Aplicacion Codigo Escondido 19" --company "CODIGO ESCONDIDO 19" --org com.flet --bundle-id com.flet.app_ce_19 --android-adaptive-icon-background "#71106F" --splash-color "#71106F" --splash-dark-color "#71106F" --build-version 1.0.0 --no-rich-output --yes --skip-flutter-doctor
           mkdir -p release
           cp build/apk/*.apk release/CODIGO-ESCONDIDO-19-ANDROID.apk
 
@@ -80,12 +80,12 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flet==0.85.3 flet-audio==0.85.3 "pillow>=10.0.0"
+          python -m pip install --upgrade flet flet-audio "pillow>=10.0.0"
 
       - name: Construir Windows
         shell: pwsh
         run: |
-          flet build windows --project codigo_escondido_19 --artifact "CODIGO ESCONDIDO 19" --product "CODIGO ESCONDIDO 19" --description "Aplicacion Codigo Escondido 19" --company "CODIGO ESCONDIDO 19" --org com.flet --bundle-id com.flet.app_ce_19 --build-version 1.0.0 --no-rich-output --yes
+          flet build windows --project codigo_escondido_19 --artifact "CODIGO ESCONDIDO 19" --product "CODIGO ESCONDIDO 19" --description "Aplicacion Codigo Escondido 19" --company "CODIGO ESCONDIDO 19" --org com.flet --bundle-id com.flet.app_ce_19 --build-version 1.0.0 --no-rich-output --yes --skip-flutter-doctor
           New-Item -ItemType Directory -Force -Path release | Out-Null
           $origen = "build\flutter\build\windows\x64\runner\Release"
           Compress-Archive -Path "$origen\*" -DestinationPath "release\CODIGO-ESCONDIDO-19-WINDOWS.zip" -Force
@@ -118,11 +118,11 @@ jobs:
       - name: Instalar Flet
         run: |
           python -m pip install --upgrade pip
-          python -m pip install flet==0.85.3 flet-audio==0.85.3 "pillow>=10.0.0"
+          python -m pip install --upgrade flet flet-audio "pillow>=10.0.0"
 
       - name: Construir macOS
         run: |
-          flet build macos --project codigo_escondido_19 --artifact "CODIGO ESCONDIDO 19" --product "CODIGO ESCONDIDO 19" --description "Aplicacion Codigo Escondido 19" --company "CODIGO ESCONDIDO 19" --org com.flet --bundle-id com.flet.app_ce_19 --build-version 1.0.0 --no-rich-output --yes
+          flet build macos --project codigo_escondido_19 --artifact "CODIGO ESCONDIDO 19" --product "CODIGO ESCONDIDO 19" --description "Aplicacion Codigo Escondido 19" --company "CODIGO ESCONDIDO 19" --org com.flet --bundle-id com.flet.app_ce_19 --build-version 1.0.0 --no-rich-output --yes --skip-flutter-doctor
           mkdir -p release
           ditto -c -k --sequesterRsrc --keepParent "build/flutter/build/macos/Build/Products/Release/CODIGO ESCONDIDO 19.app" "release/CODIGO-ESCONDIDO-19-MACOS.zip"
 
