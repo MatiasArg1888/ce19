@@ -13,6 +13,7 @@ https://matiasarg1888.github.io/ce19/
 - Android APK: https://github.com/MatiasArg1888/ce19/releases/latest/download/CODIGO-ESCONDIDO-19-ANDROID.apk
 - Windows descargador: https://github.com/MatiasArg1888/ce19/raw/main/descargas/DESCARGAR_WINDOWS.bat
 - Windows paquete directo: https://github.com/MatiasArg1888/ce19/releases/latest/download/CODIGO-ESCONDIDO-19-WINDOWS.zip
+- Mac paquete directo: https://github.com/MatiasArg1888/ce19/releases/latest/download/CODIGO-ESCONDIDO-19-MACOS.zip
 
 Si GitHub Pages no esta habilitado, entrar al repositorio y activar:
 
