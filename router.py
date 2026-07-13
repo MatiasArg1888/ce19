@@ -133,6 +133,18 @@ class Router:
     def _es_movil(self):
         return self._ancho() < 700
 
+    def _deseleccionar_vista_actual(self, e=None):
+        vista = self.vistas.get(self.ruta_actual)
+        metodo = getattr(vista, "deseleccionar_actual", None)
+
+        if not callable(metodo):
+            return
+
+        try:
+            metodo(e)
+        except Exception as error:
+            registrar_error("Router.deseleccionar_vista_actual", error, f"ruta={self.ruta_actual}")
+
     def _fondo_luminoso(self, contenido):
         return ft.Stack(
             expand=True,
@@ -163,6 +175,7 @@ class Router:
                 controls=[
                     ft.Container(
                         expand=True,
+                        on_click=self._deseleccionar_vista_actual,
                         image=ft.DecorationImage(
                             src=FONDO_APP_IMAGEN,
                             fit=ft.BoxFit.COVER,
@@ -173,6 +186,7 @@ class Router:
                     # pero el contenido blanco no se mezcle.
                     ft.Container(
                         expand=True,
+                        on_click=self._deseleccionar_vista_actual,
                         bgcolor=opacidad(0.06, FONDO_APP),
                     ),
 

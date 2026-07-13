@@ -12,6 +12,7 @@ def tarjeta_resultado(
         resultado,
         texto_boton,
         funcion,
+        funcion_compartir=None,
     ):
 
     def ver_detalle(e):
@@ -129,10 +130,6 @@ def tarjeta_resultado(
                         weight=ft.FontWeight.BOLD,
                     ),
 
-                    ft.Text(
-                        f"Longitud del texto: {len(palabra)} caracteres",
-                        color=ft.Colors.GREY_700,
-                    ),
 
                     # -------------------------
                     # Botones
@@ -145,6 +142,18 @@ def tarjeta_resultado(
                                 "Ver detalle",
                                 icon=ft.Icons.VISIBILITY,
                                 on_click=ver_detalle,
+                            ),
+
+                            *(
+                                [
+                                    ft.OutlinedButton(
+                                        "Compartir",
+                                        icon=ft.Icons.SHARE,
+                                        on_click=funcion_compartir,
+                                    )
+                                ]
+                                if funcion_compartir
+                                else []
                             ),
 
                             ft.ElevatedButton(

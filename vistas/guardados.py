@@ -12,7 +12,7 @@ from services.mantenimiento_service import MantenimientoService
 from logica.exportar_excel import exportar_guardados_xlsx
 from logica.pizarra_imagen import renderizar_lienzo_exportable_base64
 from ui.clipboard import copiar_al_portapapeles
-from ui.compartir import compartir_archivo, compartir_imagen_base64, compartir_texto
+from ui.compartir import compartir_archivo, compartir_texto
 from ui.tema import (
     PERLA_BORDE,
     PERLA_PANEL,
@@ -798,6 +798,9 @@ class GuardadosView:
         if tipo == "tiempo":
             return "Tiempo"
 
+        if tipo == "calculo_biblico":
+            return "Calculadora"
+
         return "Codificador"
 
     def _registro_pasa_filtro_tipo(self, registro):
@@ -817,6 +820,7 @@ class GuardadosView:
             "Pizarra",
             "Colores",
             "Tiempo",
+            "Calculadora",
         ]
 
         return ft.Row(
@@ -851,7 +855,7 @@ class GuardadosView:
         if not hasattr(self, "barra_filtros_tipo"):
             return
         self.barra_filtros_tipo.controls.clear()
-        for nombre in ["Todos", "Codificador", "Biblia", "Pizarra", "Colores", "Tiempo"]:
+        for nombre in ["Todos", "Codificador", "Biblia", "Pizarra", "Colores", "Tiempo", "Calculadora"]:
             self.barra_filtros_tipo.controls.append(self._chip_filtro_tipo(nombre))
 
     def _cambiar_filtro_tipo(self, nombre):
@@ -1460,6 +1464,9 @@ class GuardadosView:
         if tipo == "tiempo":
             return registro.get("nombre") or "Tiempo"
 
+        if tipo == "calculo_biblico":
+            return registro.get("nombre") or "Suma biblica"
+
         return registro.get("palabra") or registro.get("nombre") or "Tarjeta"
 
     def subtitulo_registro(self, registro):
@@ -1479,6 +1486,12 @@ class GuardadosView:
 
         if tipo == "tiempo":
             return registro.get("referencia") or "Tiempo"
+
+        if tipo == "calculo_biblico":
+            contenido = registro.get("contenido") or {}
+            letras = contenido.get("cantidad_letras") if isinstance(contenido, dict) else ""
+            referencia = registro.get("referencia") or "Biblia"
+            return f"{referencia} | {letras} letras sumadas"
 
         contenido = registro.get("contenido") or {}
         if isinstance(contenido, dict) and contenido.get("tipo") == "biblia_codificada":
@@ -1502,6 +1515,9 @@ class GuardadosView:
 
         if tipo == "tiempo":
             return "Tiempo"
+
+        if tipo == "calculo_biblico":
+            return str(registro.get("resultado") or "")
 
         return str(registro.get("resultado", ""))
 
@@ -1568,6 +1584,13 @@ class GuardadosView:
                 size=34 if grande else 28,
             )
 
+        if tipo == "calculo_biblico":
+            return ft.Icon(
+                ft.Icons.FUNCTIONS,
+                color=VIOLETA_IOS,
+                size=34 if grande else 28,
+            )
+
         return ft.Icon(
             ft.Icons.DESCRIPTION,
             color=VIOLETA_IOS,
@@ -1595,6 +1618,11 @@ class GuardadosView:
             "mime": registro.get("imagen_mime", "image/jpeg"),
             "extension": registro.get("imagen_extension", "jpg"),
         }
+
+    def _aviso_guardados(self, mensaje):
+        self.page.snack_bar = ft.SnackBar(content=ft.Text(mensaje))
+        self.page.snack_bar.open = True
+        self.page.update()
 
     def preview_registro(self, registro):
         contenido = registro.get("contenido") or {}
@@ -1840,6 +1868,18 @@ class GuardadosView:
                 f"{registro.get('suma') or registro.get('referencia', '')}"
             )
 
+        if tipo == "calculo_biblico":
+            contenido = registro.get("contenido") or {}
+            letras = contenido.get("cantidad_letras") if isinstance(contenido, dict) else ""
+            alcance = contenido.get("alcance") if isinstance(contenido, dict) else ""
+            return (
+                f"{self.titulo_registro(registro)}\n"
+                f"Referencia: {registro.get('referencia', '')}\n"
+                f"Alcance: {alcance}\n"
+                f"Letras sumadas: {letras}\n"
+                f"Suma total: {registro.get('resultado', '')}"
+            )
+
         contenido = registro.get("contenido") or {}
         if isinstance(contenido, dict) and contenido.get("tipo") == "biblia_codificada":
             texto_biblia = self.texto_biblia_codificada(registro)
@@ -1903,6 +1943,16 @@ class GuardadosView:
             if cantidad == 1
             else f"{cantidad} seleccionados"
         ) if cantidad else ""
+
+    def deseleccionar_actual(self, e=None):
+        if not self.tarjeta_seleccionada and not self.ids_seleccionados:
+            return
+
+        self.tarjeta_seleccionada = None
+        self.ids_seleccionados.clear()
+        self._actualizar_barra_acciones()
+        self.actualizar_tabla()
+        self.page.update()
 
     def toggle_seleccion_multiple(self, registro):
         id_registro = registro.get("id")
@@ -1970,6 +2020,38 @@ class GuardadosView:
         self._seleccionar_para_accion_directa(registro)
         self.mover_seleccionado(None)
 
+    def _compartir_registro_directo_desde_icono(self, registro):
+        self._seleccionar_para_accion_directa(registro)
+        self.compartir_registro_directo(registro)
+
+    def _area_click_registro(self, registro, content, expand=False):
+        return ft.GestureDetector(
+            mouse_cursor=ft.MouseCursor.CLICK,
+            on_tap=lambda e, r=registro: self.tocar_registro(r),
+            on_double_tap=lambda e, r=registro: self.abrir_detalle(r),
+            on_secondary_tap=lambda e, r=registro: self.menu_contextual_registro(r),
+            content=ft.Container(
+                expand=expand,
+                content=content,
+            ),
+        )
+
+    def _boton_accion_inline(self, icono, tooltip, accion, ancho, tamano):
+        return ft.Container(
+            width=ancho,
+            height=ancho,
+            border_radius=10,
+            alignment=ft.Alignment(0, 0),
+            ink=True,
+            tooltip=tooltip,
+            on_click=lambda e: accion(),
+            content=ft.Icon(
+                icono,
+                size=tamano,
+                color=TEXTO_SECUNDARIO,
+            ),
+        )
+
     def _acciones_registro_inline(self, registro, compacto=False):
         ancho = 30 if compacto else 34
         tamano = 16 if compacto else 18
@@ -1978,45 +2060,40 @@ class GuardadosView:
             tight=True,
             spacing=0,
             controls=[
-                ft.IconButton(
-                    icon=ft.Icons.VISIBILITY,
-                    tooltip="Ver",
-                    icon_size=tamano,
-                    width=ancho,
-                    height=ancho,
-                    on_click=lambda e, r=registro: self.abrir_detalle(r),
+                self._boton_accion_inline(
+                    ft.Icons.VISIBILITY,
+                    "Ver",
+                    lambda r=registro: self.abrir_detalle(r),
+                    ancho,
+                    tamano,
                 ),
-                ft.IconButton(
-                    icon=ft.Icons.EDIT,
-                    tooltip="Editar",
-                    icon_size=tamano,
-                    width=ancho,
-                    height=ancho,
-                    on_click=lambda e, r=registro: self.editar_registro(r),
+                self._boton_accion_inline(
+                    ft.Icons.EDIT,
+                    "Editar",
+                    lambda r=registro: self.editar_registro(r),
+                    ancho,
+                    tamano,
                 ),
-                ft.IconButton(
-                    icon=ft.Icons.SHARE,
-                    tooltip="Enviar / compartir",
-                    icon_size=tamano,
-                    width=ancho,
-                    height=ancho,
-                    on_click=lambda e, r=registro: self.compartir_registro_directo(r),
+                self._boton_accion_inline(
+                    ft.Icons.SHARE,
+                    "Enviar / compartir",
+                    lambda r=registro: self._compartir_registro_directo_desde_icono(r),
+                    ancho,
+                    tamano,
                 ),
-                ft.IconButton(
-                    icon=ft.Icons.DRIVE_FILE_MOVE,
-                    tooltip="Mover",
-                    icon_size=tamano,
-                    width=ancho,
-                    height=ancho,
-                    on_click=lambda e, r=registro: self._mover_registro_directo(r),
+                self._boton_accion_inline(
+                    ft.Icons.DRIVE_FILE_MOVE,
+                    "Mover",
+                    lambda r=registro: self._mover_registro_directo(r),
+                    ancho,
+                    tamano,
                 ),
-                ft.IconButton(
-                    icon=ft.Icons.DELETE_OUTLINE,
-                    tooltip="Eliminar",
-                    icon_size=tamano,
-                    width=ancho,
-                    height=ancho,
-                    on_click=lambda e, r=registro: self.confirmar_eliminar(r["id"]),
+                self._boton_accion_inline(
+                    ft.Icons.DELETE_OUTLINE,
+                    "Eliminar",
+                    lambda r=registro: self.confirmar_eliminar(r["id"]),
+                    ancho,
+                    tamano,
                 ),
             ],
         )
@@ -3004,19 +3081,7 @@ class GuardadosView:
         )
 
 
-        return ft.GestureDetector(
-
-            on_tap=lambda e:
-                self.tocar_registro(registro),
-
-            on_double_tap=lambda e:
-                self.abrir_detalle(registro),
-
-            on_secondary_tap=lambda e:
-                self.menu_contextual_registro(registro),
-
-
-            content=ft.Card(
+        return ft.Card(
 
                 elevation=1,
 
@@ -3067,39 +3132,33 @@ class GuardadosView:
 
 
                                     ft.Row(
-
                                         spacing=8,
-
+                                        expand=True,
                                         controls=[
-
                                             ft.Checkbox(
                                                 visible=self.modo_seleccion_multiple,
                                                 value=seleccionada,
                                                 on_change=lambda e, r=registro:
                                                     self.toggle_seleccion_multiple(r),
                                             ),
-
-                                            self.icono_registro(registro),
-
-
-                                            ft.Text(
-
-                                                self.titulo_registro(registro),
-
-                                                size=20,
-
-                                                weight=
-                                                ft.FontWeight.BOLD,
-
-                                                max_lines=1,
-
-                                                overflow=
-                                                ft.TextOverflow.ELLIPSIS
-
-                                            )
-
-                                        ]
-
+                                            self._area_click_registro(
+                                                registro,
+                                                ft.Row(
+                                                    spacing=8,
+                                                    controls=[
+                                                        self.icono_registro(registro),
+                                                        ft.Text(
+                                                            self.titulo_registro(registro),
+                                                            size=20,
+                                                            weight=ft.FontWeight.BOLD,
+                                                            max_lines=1,
+                                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                                        ),
+                                                    ],
+                                                ),
+                                                expand=True,
+                                            ),
+                                        ],
                                     ),
 
 
@@ -3110,27 +3169,23 @@ class GuardadosView:
                             ),
 
 
-                            self.preview_registro(registro),
-
-
-                            ft.Text(
-
-                                self.subtitulo_registro(registro),
-
-                                size=14
-
-                            ),
-
-
-                            ft.Text(
-
-                                f'Resultado: {self.resultado_registro(registro)}',
-
-                                size=18,
-
-                                weight=
-                                ft.FontWeight.BOLD
-
+                            self._area_click_registro(
+                                registro,
+                                ft.Column(
+                                    spacing=10,
+                                    controls=[
+                                        self.preview_registro(registro),
+                                        ft.Text(
+                                            self.subtitulo_registro(registro),
+                                            size=14,
+                                        ),
+                                        ft.Text(
+                                            f'Resultado: {self.resultado_registro(registro)}',
+                                            size=18,
+                                            weight=ft.FontWeight.BOLD,
+                                        ),
+                                    ],
+                                ),
                             ),
 
 
@@ -3145,7 +3200,6 @@ class GuardadosView:
 
             )
 
-        )
     # ======================================
     # CREAR TARJETA CUADRADA
     # ======================================                            
@@ -3153,18 +3207,7 @@ class GuardadosView:
 
         seleccionada = self.esta_seleccionado(registro)
 
-        return ft.GestureDetector(
-
-            on_tap=lambda e:
-                self.tocar_registro(registro),
-
-            on_double_tap=lambda e:
-                self.abrir_detalle(registro),
-
-            on_secondary_tap=lambda e:
-                self.menu_contextual_registro(registro),
-
-            content=ft.Card(
+        return ft.Card(
 
                 elevation=4,
 
@@ -3209,65 +3252,53 @@ class GuardadosView:
                                             self.toggle_seleccion_multiple(r),
                                     ),
 
-                                    self.icono_registro(registro, grande=True),
+                                    self._area_click_registro(
+                                        registro,
+                                        self.icono_registro(registro, grande=True),
+                                    ),
 
                                     self._acciones_registro_inline(registro, compacto=True)
                                 ]
                             ),
 
-                            ft.Text(
-                                self.titulo_registro(registro),
-
-                                size=18,
-
-                                weight=ft.FontWeight.BOLD,
-
-                                max_lines=2,
-
-                                overflow=
-                                ft.TextOverflow.ELLIPSIS
-                            ),
-
-                            ft.Text(
-                                self.subtitulo_registro(registro),
-
-                                size=13
-                            ),
-
-                            ft.Text(
-                                f'Resultado: {self.resultado_registro(registro)}',
-
-                                size=16,
-
-                                weight=ft.FontWeight.BOLD,
-
-                                max_lines=2,
-
-                                overflow=
-                                ft.TextOverflow.ELLIPSIS
-                            ),
-
-                            ft.Text(
-                                registro.get(
-                                    "referencia",
-                                    ""
+                            self._area_click_registro(
+                                registro,
+                                ft.Column(
+                                    spacing=8,
+                                    controls=[
+                                        ft.Text(
+                                            self.titulo_registro(registro),
+                                            size=18,
+                                            weight=ft.FontWeight.BOLD,
+                                            max_lines=2,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                        ),
+                                        ft.Text(
+                                            self.subtitulo_registro(registro),
+                                            size=13,
+                                        ),
+                                        ft.Text(
+                                            f'Resultado: {self.resultado_registro(registro)}',
+                                            size=16,
+                                            weight=ft.FontWeight.BOLD,
+                                            max_lines=2,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                        ),
+                                        ft.Text(
+                                            registro.get("referencia", ""),
+                                            size=12,
+                                            color=ft.Colors.GREY_700,
+                                            max_lines=2,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                        ),
+                                    ],
                                 ),
-
-                                size=12,
-
-                                color=ft.Colors.GREY_700,
-
-                                max_lines=2,
-
-                                overflow=
-                                ft.TextOverflow.ELLIPSIS
                             )
 
                         ]
                     )
                 )
             )
-        )
     # ======================================
     # CREAR CUADRICULA
     # ======================================
@@ -3303,15 +3334,7 @@ class GuardadosView:
                         else "#FFFFFF"
                     ),
 
-                    content=ft.GestureDetector(
-                        on_tap=lambda e, r=registro:
-                            self.tocar_registro(r),
-                        on_double_tap=lambda e, r=registro:
-                            self.abrir_detalle(r),
-                        on_secondary_tap=lambda e, r=registro:
-                            self.menu_contextual_registro(r),
-                        
-                        content=ft.Row(
+                    content=ft.Row(
                             spacing=15,
                             vertical_alignment=
                             ft.CrossAxisAlignment.CENTER,
@@ -3323,45 +3346,45 @@ class GuardadosView:
                                     on_change=lambda e, r=registro:
                                         self.toggle_seleccion_multiple(r),
                                 ),
-                                self.icono_registro(registro),
-                                ft.Container(
-                                    expand=True,
-                                    content=ft.Column(
-                                        spacing=2,
+                                self._area_click_registro(
+                                    registro,
+                                    ft.Row(
+                                        spacing=12,
+                                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                         controls=[
-                                            ft.Text(
-                                                self.titulo_registro(registro),
-                                                weight=
-                                                ft.FontWeight.BOLD,
-                                                size=16,
-                                                max_lines=1,
-                                                overflow=
-                                                ft.TextOverflow.ELLIPSIS
+                                            self.icono_registro(registro),
+                                            ft.Container(
+                                                expand=True,
+                                                content=ft.Column(
+                                                    spacing=2,
+                                                    controls=[
+                                                        ft.Text(
+                                                            self.titulo_registro(registro),
+                                                            weight=ft.FontWeight.BOLD,
+                                                            size=16,
+                                                            max_lines=1,
+                                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                                        ),
+                                                        ft.Text(
+                                                            self.subtitulo_registro(registro),
+                                                            size=13,
+                                                            color=ft.Colors.GREY_700,
+                                                        ),
+                                                    ],
+                                                ),
                                             ),
-
                                             ft.Text(
-                                                self.subtitulo_registro(registro),
-
-                                                size=13,
-
-                                                color=
-                                                ft.Colors.GREY_700
-
-                                            )
-                                        ]
-                                    )
-
-                                ),
-                                ft.Text(
-                                    self.resultado_registro(registro),
-                                    size=16,
-                                    weight=
-                                    ft.FontWeight.BOLD
+                                                self.resultado_registro(registro),
+                                                size=16,
+                                                weight=ft.FontWeight.BOLD,
+                                            ),
+                                        ],
+                                    ),
+                                    expand=True,
                                 ),
                                 self._acciones_registro_inline(registro, compacto=True)
                             ]
                         )
-                    )
                 )
                 for registro in registros
             ]
@@ -3735,6 +3758,7 @@ class GuardadosView:
         seleccionados = self.registros_seleccionados()
 
         if not seleccionados:
+            self._aviso_guardados("Seleccione un archivo para compartir.")
             return
         texto = "\n\n---\n\n".join(
             self.texto_registro(registro)
@@ -3769,41 +3793,25 @@ class GuardadosView:
         seleccionados = self.registros_seleccionados()
 
         if not seleccionados:
+            self._aviso_guardados("Seleccione un archivo para compartir.")
             return
 
-        datos_imagen = (
-            self.datos_imagen_pizarra(seleccionados[0])
-            if len(seleccionados) == 1
-            and seleccionados[0].get("tipo") == "pizarra"
-            else None
+        texto = "\n\n---\n\n".join(
+            self.texto_registro(registro)
+            for registro in seleccionados
         )
 
-        if datos_imagen and datos_imagen.get("base64"):
-            compartir_imagen_base64(
-                self.page,
-                datos_imagen["base64"],
-                (
-                    f"{self.titulo_registro(seleccionados[0])}."
-                    f"{datos_imagen.get('extension', 'jpg')}"
-                ),
-                self.titulo_registro(seleccionados[0]),
-                mime_type=datos_imagen.get("mime", "image/jpeg"),
-            )
-            return
+        titulo = (
+            self.titulo_registro(seleccionados[0])
+            if len(seleccionados) == 1
+            else "Elementos guardados"
+        )
 
         compartir_texto(
             self.page,
-            "\n\n---\n\n".join(
-                self.texto_registro(registro)
-                for registro in seleccionados
-            ),
-            (
-                self.titulo_registro(seleccionados[0])
-                if len(seleccionados) == 1
-                else "Elementos guardados"
-            ),
+            texto,
+            titulo,
         )
-
     # ======================================
     # ELIMINAR SELECIONADO
     # ======================================
@@ -3936,25 +3944,6 @@ class GuardadosView:
         self.page.update()
 
     def compartir_registro_directo(self, registro):
-        datos_imagen = (
-            self.datos_imagen_pizarra(registro)
-            if registro.get("tipo") == "pizarra"
-            else None
-        )
-
-        if datos_imagen and datos_imagen.get("base64"):
-            compartir_imagen_base64(
-                self.page,
-                datos_imagen["base64"],
-                (
-                    f"{self.titulo_registro(registro)}."
-                    f"{datos_imagen.get('extension', 'jpg')}"
-                ),
-                self.titulo_registro(registro),
-                mime_type=datos_imagen.get("mime", "image/jpeg"),
-            )
-            return
-
         compartir_texto(
             self.page,
             self.texto_registro(registro),

@@ -2,6 +2,10 @@ from decimal import Decimal, InvalidOperation
 
 import flet as ft
 
+from core.app_state import state
+from services.biblia_service import BibliaService
+from services.calculadora_biblia_service import CalculadoraBibliaService
+from ui.nombre_guardado import pedir_nombre_y_carpeta_guardado
 from ui.responsive import Responsive
 from ui.tema import (
     BLANCO,
@@ -24,6 +28,9 @@ class CalculadoraView:
         self.router = router
         self.responsive = Responsive(page)
         self.expresion = ""
+        self.sumador_biblia = CalculadoraBibliaService()
+        self.libros_biblia = BibliaService.libros()
+        self.ultimo_resultado_suma = None
         self.display = ft.Text(
             "0",
             size=40,
@@ -37,6 +44,59 @@ class CalculadoraView:
             color=TEXTO_SECUNDARIO,
             text_align=ft.TextAlign.RIGHT,
         )
+        self.modo_suma_biblia = ft.Dropdown(
+            label="Tipo de suma",
+            value="Versiculos",
+            options=[
+                ft.dropdown.Option("Versiculos"),
+                ft.dropdown.Option("Capitulos"),
+                ft.dropdown.Option("Libros"),
+                ft.dropdown.Option("Biblia completa"),
+            ],
+            on_select=self._cambiar_modo_suma_biblia,
+        )
+        self.libro_suma_biblia = ft.Dropdown(
+            label="Libro",
+            options=[
+                ft.dropdown.Option(libro.get("nombre", ""))
+                for libro in self.libros_biblia
+            ],
+            value=self.libros_biblia[0].get("nombre", "") if self.libros_biblia else None,
+            on_select=self._cambiar_libro_suma_biblia,
+        )
+        self.libro_fin_suma_biblia = ft.Dropdown(
+            label="Hasta libro",
+            options=[
+                ft.dropdown.Option(libro.get("nombre", ""))
+                for libro in self.libros_biblia
+            ],
+            value=self.libros_biblia[0].get("nombre", "") if self.libros_biblia else None,
+        )
+        self.capitulo_inicio_suma_biblia = ft.Dropdown(
+            label="Capitulo",
+            on_select=self._cambiar_capitulo_suma_biblia,
+        )
+        self.capitulo_fin_suma_biblia = ft.Dropdown(label="Hasta capitulo")
+        self.versiculo_inicio_suma_biblia = ft.Dropdown(label="Versiculo")
+        self.versiculo_fin_suma_biblia = ft.Dropdown(label="Hasta versiculo")
+        self.resultado_suma_biblia = ft.Text(
+            "0",
+            size=38,
+            weight=ft.FontWeight.BOLD,
+            color=VIOLETA_IOS,
+        )
+        self.detalle_suma_biblia = ft.Text(
+            "Seleccione un alcance y presione Calcular.",
+            size=12,
+            color=TEXTO_SECUNDARIO,
+        )
+        self.boton_guardar_suma = ft.OutlinedButton(
+            "Guardar suma",
+            icon=ft.Icons.SAVE_ALT,
+            disabled=True,
+            on_click=self._guardar_suma_biblica,
+        )
+        self._preparar_selectores_suma_biblia()
 
     def _on_resize(self, e):
         self.router.refrescar()
@@ -46,7 +106,7 @@ class CalculadoraView:
         es_movil = self.responsive.is_mobile()
         self.display.size = 36 if es_movil else 52
 
-        cuerpo = ft.Column(
+        calculadora = ft.Column(
             tight=True,
             spacing=12,
             controls=[
@@ -71,6 +131,23 @@ class CalculadoraView:
                 self._teclado(),
             ],
         )
+        sumador = self._sumador_biblico()
+        cuerpo = (
+            ft.Column(
+                scroll=ft.ScrollMode.AUTO,
+                spacing=14,
+                controls=[calculadora, sumador],
+            )
+            if es_movil
+            else ft.Row(
+                spacing=18,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                controls=[
+                    ft.Container(width=430, content=calculadora),
+                    ft.Container(expand=True, content=sumador),
+                ],
+            )
+        )
 
         return ft.Container(
             expand=True,
@@ -78,10 +155,295 @@ class CalculadoraView:
             padding=4 if es_movil else 8,
             alignment=ft.Alignment(0, 0),
             content=ft.Container(
-                width=460,
+                width=980,
                 content=panel_moderno(cuerpo, padding=18 if es_movil else 20),
             ),
         )
+
+    def _sumador_biblico(self):
+        self._sincronizar_controles_suma_biblia()
+
+        if not self.libros_biblia:
+            return ft.Container(
+                padding=16,
+                bgcolor=SUPERFICIE_PERLADA,
+                border_radius=18,
+                border=ft.Border.all(1, PERLA_BORDE),
+                content=ft.Text("No se encontro la Biblia cargada."),
+            )
+
+        controles = ft.Column(
+            tight=True,
+            spacing=12,
+            controls=[
+                ft.Row(
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Icon(ft.Icons.MENU_BOOK, color=DORADO),
+                        ft.Text(
+                            "Sumar Biblia",
+                            size=22,
+                            weight=ft.FontWeight.BOLD,
+                            color=TEXTO_PRINCIPAL,
+                        ),
+                    ],
+                ),
+                ft.Text(
+                    "Calcula solo la suma total de los valores de letras.",
+                    size=12,
+                    color=TEXTO_SECUNDARIO,
+                ),
+                ft.Row(
+                    wrap=True,
+                    spacing=10,
+                    run_spacing=10,
+                    controls=[
+                        ft.Container(width=190, content=self.modo_suma_biblia),
+                        ft.Container(width=210, content=self.libro_suma_biblia),
+                        ft.Container(width=210, content=self.libro_fin_suma_biblia),
+                        ft.Container(width=130, content=self.capitulo_inicio_suma_biblia),
+                        ft.Container(width=150, content=self.capitulo_fin_suma_biblia),
+                        ft.Container(width=130, content=self.versiculo_inicio_suma_biblia),
+                        ft.Container(width=150, content=self.versiculo_fin_suma_biblia),
+                    ],
+                ),
+                ft.Row(
+                    wrap=True,
+                    spacing=10,
+                    run_spacing=10,
+                    controls=[
+                        ft.ElevatedButton(
+                            "Calcular",
+                            icon=ft.Icons.CALCULATE,
+                            bgcolor=VIOLETA_IOS,
+                            color=BLANCO,
+                            on_click=self._calcular_suma_biblica,
+                        ),
+                        self.boton_guardar_suma,
+                    ],
+                ),
+                ft.Container(
+                    padding=16,
+                    bgcolor=BLANCO,
+                    border_radius=16,
+                    border=ft.Border.all(1, PERLA_BORDE),
+                    content=ft.Column(
+                        tight=True,
+                        spacing=6,
+                        controls=[
+                            ft.Text(
+                                "Suma total",
+                                size=12,
+                                color=TEXTO_SECUNDARIO,
+                                weight=ft.FontWeight.BOLD,
+                            ),
+                            self.resultado_suma_biblia,
+                            self.detalle_suma_biblia,
+                        ],
+                    ),
+                ),
+            ],
+        )
+
+        return ft.Container(
+            padding=18,
+            bgcolor=SUPERFICIE_PERLADA,
+            border_radius=18,
+            border=ft.Border.all(1, PERLA_BORDE),
+            content=controles,
+        )
+
+    def _preparar_selectores_suma_biblia(self):
+        self._actualizar_capitulos_suma_biblia()
+        self._actualizar_versiculos_suma_biblia()
+        self._sincronizar_controles_suma_biblia()
+
+    def _sincronizar_controles_suma_biblia(self):
+        modo = self.modo_suma_biblia.value or "Versiculos"
+        es_biblia = modo == "Biblia completa"
+        es_capitulos = modo == "Capitulos"
+        es_versiculos = modo == "Versiculos"
+        es_libros = modo == "Libros"
+
+        self.libro_suma_biblia.visible = not es_biblia
+        self.libro_fin_suma_biblia.visible = es_libros
+        self.capitulo_inicio_suma_biblia.visible = es_capitulos or es_versiculos
+        self.capitulo_fin_suma_biblia.visible = es_capitulos
+        self.versiculo_inicio_suma_biblia.visible = es_versiculos
+        self.versiculo_fin_suma_biblia.visible = es_versiculos
+
+    def _cambiar_modo_suma_biblia(self, e=None):
+        self._sincronizar_controles_suma_biblia()
+        self._actualizar_control(self.libro_suma_biblia)
+        self._actualizar_control(self.libro_fin_suma_biblia)
+        self._actualizar_control(self.capitulo_inicio_suma_biblia)
+        self._actualizar_control(self.capitulo_fin_suma_biblia)
+        self._actualizar_control(self.versiculo_inicio_suma_biblia)
+        self._actualizar_control(self.versiculo_fin_suma_biblia)
+
+    def _cambiar_libro_suma_biblia(self, e=None):
+        if self.modo_suma_biblia.value == "Libros":
+            self.libro_fin_suma_biblia.value = self.libro_suma_biblia.value
+            self._actualizar_control(self.libro_fin_suma_biblia)
+
+        self._actualizar_capitulos_suma_biblia()
+        self._actualizar_versiculos_suma_biblia()
+
+    def _cambiar_capitulo_suma_biblia(self, e=None):
+        self._actualizar_versiculos_suma_biblia()
+
+    def _actualizar_capitulos_suma_biblia(self):
+        libro = BibliaService.libro_por_nombre(self.libro_suma_biblia.value)
+        total = len(libro.get("capitulos", [])) if libro else 0
+        opciones = [ft.dropdown.Option(str(i)) for i in range(1, total + 1)]
+
+        for control in (self.capitulo_inicio_suma_biblia, self.capitulo_fin_suma_biblia):
+            valor_actual = control.value
+            control.options = opciones
+
+            if not opciones:
+                control.value = None
+            elif valor_actual and 1 <= int(valor_actual) <= total:
+                control.value = valor_actual
+            else:
+                control.value = "1"
+
+            self._actualizar_control(control)
+
+    def _actualizar_versiculos_suma_biblia(self):
+        libro = self.libro_suma_biblia.value
+        capitulo = self.capitulo_inicio_suma_biblia.value or 1
+        total = len(BibliaService.obtener_capitulo(libro, capitulo))
+        opciones = [ft.dropdown.Option(str(i)) for i in range(1, total + 1)]
+
+        for control in (self.versiculo_inicio_suma_biblia, self.versiculo_fin_suma_biblia):
+            valor_actual = control.value
+            control.options = opciones
+
+            if not opciones:
+                control.value = None
+            elif valor_actual and 1 <= int(valor_actual) <= total:
+                control.value = valor_actual
+            else:
+                control.value = "1"
+
+            self._actualizar_control(control)
+
+    def _calcular_suma_biblica(self, e=None):
+        modo = self.modo_suma_biblia.value or "Versiculos"
+
+        try:
+            if modo == "Biblia completa":
+                resultado = self.sumador_biblia.sumar_biblia_completa()
+            elif modo == "Capitulos":
+                resultado = self.sumador_biblia.sumar_capitulos(
+                    self.libro_suma_biblia.value,
+                    self.capitulo_inicio_suma_biblia.value,
+                    self.capitulo_fin_suma_biblia.value,
+                )
+            elif modo == "Libros":
+                resultado = self.sumador_biblia.sumar_libros(
+                    self.libro_suma_biblia.value,
+                    self.libro_fin_suma_biblia.value,
+                )
+            else:
+                resultado = self.sumador_biblia.sumar_versiculos(
+                    self.libro_suma_biblia.value,
+                    self.capitulo_inicio_suma_biblia.value,
+                    self.versiculo_inicio_suma_biblia.value,
+                    self.versiculo_fin_suma_biblia.value,
+                )
+        except (TypeError, ValueError, IndexError):
+            self._snack("Seleccione una parte valida de la Biblia.")
+            return
+
+        self.ultimo_resultado_suma = resultado
+        self.resultado_suma_biblia.value = self._formatear_numero(resultado["total"])
+        self.detalle_suma_biblia.value = (
+            f"{resultado['referencia']}\n"
+            f"Letras sumadas: {self._formatear_numero(resultado['cantidad_letras'])}\n"
+            f"Alfabeto: {resultado['alfabeto']}"
+        )
+        self.boton_guardar_suma.disabled = False
+        self._actualizar_control(self.resultado_suma_biblia)
+        self._actualizar_control(self.detalle_suma_biblia)
+        self._actualizar_control(self.boton_guardar_suma)
+
+    def _guardar_suma_biblica(self, e=None):
+        if not self.ultimo_resultado_suma:
+            self._snack("Primero calcule una suma.")
+            return
+
+        resultado = self.ultimo_resultado_suma.copy()
+        nombre_default = f"Suma {resultado['referencia']}"
+
+        def guardar_con_nombre(nombre, carpeta=None):
+            destino = carpeta or state.carpetas.obtener_por_nombre("CALCULADORA")
+            state.guardados.guardar(
+                {
+                    "tipo": "calculo_biblico",
+                    "carpeta": destino["nombre"] if destino else "CALCULADORA",
+                    "carpeta_id": destino["id"] if destino else 6,
+                    "nombre": nombre or nombre_default,
+                    "palabra": resultado["referencia"],
+                    "referencia": resultado["referencia"],
+                    "alfabeto": resultado["alfabeto"],
+                    "suma": (
+                        f"Referencia: {resultado['referencia']}\n"
+                        f"Alcance: {resultado['alcance']}\n"
+                        f"Letras sumadas: {resultado['cantidad_letras']}\n"
+                        f"Suma total: {resultado['total']}"
+                    ),
+                    "resultado": resultado["total"],
+                    "contenido": {
+                        "tipo": "calculo_biblico",
+                        **resultado,
+                    },
+                }
+            )
+            self._mostrar_guardado_correcto(nombre or nombre_default)
+
+        pedir_nombre_y_carpeta_guardado(
+            self.page,
+            "Guardar suma biblica",
+            nombre_default,
+            state.carpetas,
+            "CALCULADORA",
+            guardar_con_nombre,
+            "Se guardara en CALCULADORA.",
+        )
+
+    def _mostrar_guardado_correcto(self, nombre):
+        def cerrar(e=None):
+            dialog.open = False
+            self.page.update()
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Guardado correctamente"),
+            content=ft.Text(nombre),
+            actions=[ft.ElevatedButton("Aceptar", on_click=cerrar)],
+        )
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
+
+    def _snack(self, mensaje):
+        self.page.snack_bar = ft.SnackBar(content=ft.Text(mensaje))
+        self.page.snack_bar.open = True
+        self.page.update()
+
+    def _formatear_numero(self, valor):
+        try:
+            return f"{int(valor):,}".replace(",", ".")
+        except (TypeError, ValueError):
+            return str(valor)
+
+    def _actualizar_control(self, control):
+        try:
+            control.update()
+        except (RuntimeError, AssertionError):
+            pass
 
     def _teclado(self):
         filas = [

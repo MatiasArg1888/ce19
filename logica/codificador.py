@@ -3,7 +3,6 @@ import unicodedata
 
 def normalizar_texto_codificador(texto):
     texto = (texto or "").upper()
-    texto = texto.replace("Ã‘", "Ñ")
     texto = texto.replace("Ñ", "\0")
     texto = unicodedata.normalize("NFD", texto)
     texto = "".join(
@@ -26,7 +25,7 @@ class Codificador:
     def crear_diccionario(self, usar_ch=False, usar_ll=False, **opciones):
         usar_enie = bool(
             opciones.get("usar_ñ")
-            or opciones.get("usar_Ã±")
+            or opciones.get("usar_enie")
             or opciones.get("usar_Ñ")
         )
         lista = []

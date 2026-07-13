@@ -29,6 +29,11 @@ CARPETAS_FIJAS = [
         "nombre": "TIEMPO",
         "padre": None,
     },
+    {
+        "id": 6,
+        "nombre": "CALCULADORA",
+        "padre": None,
+    },
 ]
 
 

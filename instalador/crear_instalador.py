@@ -11,6 +11,7 @@ PROJECT_NAME = "codigo_escondido_19"
 BUNDLE_ID = "com.flet.app_ce_19"
 ORG = "com.flet"
 VERSION = "1.0.0"
+ROOT = Path(__file__).resolve().parents[1]
 
 DESTINOS = {
     "1": {
@@ -47,7 +48,7 @@ DESTINOS = {
 
 
 def flet_ejecutable():
-    base = Path("env")
+    base = ROOT / "env"
 
     if platform.system() == "Windows":
         return base / "Scripts" / "flet.exe"
@@ -86,8 +87,6 @@ def comando_build(destino):
         "#71106F",
         "--build-version",
         VERSION,
-        "--exclude",
-        "datos/audios_biblia",
         "--no-rich-output",
         "--yes",
         "--skip-flutter-doctor",
@@ -267,7 +266,7 @@ def estado_visual_studio_cpp():
 
 
 def completar_windows_si_falla():
-    build_dir = Path("build") / "flutter" / "build" / "windows" / "x64"
+    build_dir = ROOT / "build" / "flutter" / "build" / "windows" / "x64"
     cmake_install = build_dir / "cmake_install.cmake"
     release_dir = build_dir / "runner" / "Release"
     exe = release_dir / f"{APP_NOMBRE}.exe"
@@ -303,12 +302,12 @@ def completar_windows_si_falla():
 
 
 def copiar_salida_windows():
-    origen = Path("build") / "flutter" / "build" / "windows" / "x64" / "runner" / "Release"
+    origen = ROOT / "build" / "flutter" / "build" / "windows" / "x64" / "runner" / "Release"
     exe = origen / f"{APP_NOMBRE}.exe"
     if not exe.exists():
         return None, None
 
-    raiz = Path("dist_windows")
+    raiz = ROOT / "dist_windows"
     destino = raiz / APP_NOMBRE
     destino.mkdir(parents=True, exist_ok=True)
 
@@ -321,7 +320,7 @@ def copiar_salida_windows():
         else:
             shutil.copy2(elemento, salida)
 
-    zip_base = Path("CODIGO_ESCONDIDO_19_WINDOWS")
+    zip_base = ROOT / "CODIGO_ESCONDIDO_19_WINDOWS"
     zip_path = zip_base.with_suffix(".zip")
     if zip_path.exists():
         zip_path.unlink()
@@ -408,7 +407,7 @@ def main():
     entorno["FLET_CLI_NO_RICH_OUTPUT"] = "1"
     entorno["NO_COLOR"] = "1"
     entorno["TERM"] = "dumb"
-    resultado = subprocess.run(comando, env=entorno)
+    resultado = subprocess.run(comando, env=entorno, cwd=ROOT)
     codigo = resultado.returncode
 
     if destino == "windows" and codigo != 0:

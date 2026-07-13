@@ -1,5 +1,6 @@
 $ErrorActionPreference = "Continue"
-Set-Location -LiteralPath $PSScriptRoot
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location -LiteralPath $ProjectRoot
 
 $env:PYTHONIOENCODING = "utf-8:replace"
 $env:PYTHONUTF8 = "1"
@@ -36,14 +37,12 @@ $argsFlet = @(
     "#71106F",
     "--build-version",
     "1.0.0",
-    "--exclude",
-    "datos/audios_biblia",
     "--no-rich-output",
     "--yes",
     "--skip-flutter-doctor"
 )
 
-& "$PSScriptRoot\env\Scripts\flet.exe" @argsFlet 2>&1 | Tee-Object -FilePath $log -Append
+& "$ProjectRoot\env\Scripts\flet.exe" @argsFlet 2>&1 | Tee-Object -FilePath $log -Append
 $code = $LASTEXITCODE
 
 "Fin build Windows: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Codigo: $code" | Tee-Object -FilePath $log -Append

@@ -4,6 +4,7 @@
 import json
 import random
 import re
+import unicodedata
 from pathlib import Path
 
 import flet as ft
@@ -17,11 +18,8 @@ from logica.biblia import (
     guardar_resaltados,
     verso_id,
 )
-from logica.codificador import Codificador
-from logica.diccionarios import ALFABETO_COMPLETO
-from services.biblia_service import BibliaService, CATEGORIAS_RANDOM_BIBLIA
+from services.biblia_service import BibliaService
 from services.codificador_service import CodificadorService
-from services.notas_biblia_service import NotasBibliaService
 from ui.clipboard import copiar_al_portapapeles
 from ui.compartir import compartir_texto
 from ui.nombre_guardado import pedir_nombre_y_carpeta_guardado
@@ -125,6 +123,75 @@ LIBROS_RANDOM_POR_CATEGORIA = {
     },
 }
 
+ABREVIATURAS_LIBROS = {
+    "Génesis": ("gn", "gen", "ge"),
+    "Éxodo": ("ex", "exo"),
+    "Levítico": ("lv", "lev"),
+    "Números": ("nm", "num", "nu"),
+    "Deuteronomio": ("dt", "deut"),
+    "Josué": ("jos", "josue", "js"),
+    "Jueces": ("jue", "juec", "jueces"),
+    "Rut": ("rt", "rut"),
+    "1 Samuel": ("1s", "1sa", "1sam", "1 sam", "1 sm"),
+    "2 Samuel": ("2s", "2sa", "2sam", "2 sam", "2 sm"),
+    "1 Reyes": ("1r", "1re", "1rey", "1 re", "1 rey"),
+    "2 Reyes": ("2r", "2re", "2rey", "2 re", "2 rey"),
+    "1 Crónicas": ("1cr", "1cro", "1 cron", "1 cronicas", "1 cr"),
+    "2 Crónicas": ("2cr", "2cro", "2 cron", "2 cronicas", "2 cr"),
+    "Esdras": ("esd", "esdr"),
+    "Nehemías": ("neh", "ne"),
+    "Ester": ("est", "ester"),
+    "Job": ("job", "jb"),
+    "Salmos": ("sal", "sl", "salmo", "salmos", "ps"),
+    "Proverbios": ("pr", "prov", "pro"),
+    "Eclesiastés": ("ec", "ecl", "ecles"),
+    "Cantares": ("cnt", "cant", "ct"),
+    "Isaías": ("is", "isa"),
+    "Jeremías": ("jer", "jr"),
+    "Lamentaciones": ("lam", "lm"),
+    "Ezequiel": ("ez", "eze"),
+    "Daniel": ("dn", "dan"),
+    "Oseas": ("os", "ose"),
+    "Joel": ("jl", "joel"),
+    "Amós": ("am", "amos"),
+    "Abdías": ("abd", "ab"),
+    "Jonás": ("jon", "jonas"),
+    "Miqueas": ("miq", "mi"),
+    "Nahúm": ("nah", "na"),
+    "Habacuc": ("hab", "ha"),
+    "Sofonías": ("sof", "so"),
+    "Hageo": ("hag", "hg"),
+    "Zacarías": ("zac", "zc"),
+    "Malaquías": ("mal", "ml"),
+    "Mateo": ("mt", "mat"),
+    "Marcos": ("mc", "mr", "mar"),
+    "Lucas": ("lc", "luc"),
+    "Juan": ("jn", "juan"),
+    "Hechos": ("hch", "hech", "hechos"),
+    "Romanos": ("ro", "rom", "rm"),
+    "1 Corintios": ("1co", "1cor", "1 cor", "1 co"),
+    "2 Corintios": ("2co", "2cor", "2 cor", "2 co"),
+    "Gálatas": ("ga", "gal"),
+    "Efesios": ("ef", "efe"),
+    "Filipenses": ("fil", "flp"),
+    "Colosenses": ("col", "co"),
+    "1 Tesalonicenses": ("1tes", "1ts", "1 tes", "1 ts"),
+    "2 Tesalonicenses": ("2tes", "2ts", "2 tes", "2 ts"),
+    "1 Timoteo": ("1tim", "1ti", "1 tim", "1 ti"),
+    "2 Timoteo": ("2tim", "2ti", "2 tim", "2 ti"),
+    "Tito": ("tit", "tt"),
+    "Filemón": ("flm", "fm"),
+    "Hebreos": ("heb", "he"),
+    "Santiago": ("stg", "sant", "sg"),
+    "1 Pedro": ("1p", "1pe", "1ped", "1 ped", "1 pe"),
+    "2 Pedro": ("2p", "2pe", "2ped", "2 ped", "2 pe"),
+    "1 Juan": ("1jn", "1ju", "1 jn", "1 juan"),
+    "2 Juan": ("2jn", "2ju", "2 jn", "2 juan"),
+    "3 Juan": ("3jn", "3ju", "3 jn", "3 juan"),
+    "Judas": ("jud", "jd"),
+    "Apocalipsis": ("ap", "apo", "apoc", "apocalipsis"),
+}
+
 
 class BibliaView:
     def __init__(self, page, router):
@@ -146,6 +213,8 @@ class BibliaView:
         self.capitulo_actual = int(ultima_lectura.get("capitulo") or 1)
         self.verso_seleccionado = None
         self.ultimo_verso_accionado = None
+        self.modo_compartir_multiple = False
+        self.versos_compartir = set()
         self.color_actual = "Amarillo"
         self.aviso_aceptado = False
         self.modo_vista = ultima_lectura.get("modo") or "Libros"
@@ -154,23 +223,13 @@ class BibliaView:
         self.objetivo_color_control = None
         self._cache_primer_resaltado = {}
         self.codificador_service = CodificadorService()
-        self.notas_biblia_service = NotasBibliaService()
-        self.nota_biblia_input = ft.TextField(
-            hint_text="Escriba una nota personal para este versiculo...",
-            multiline=True,
-            min_lines=4,
-            max_lines=7,
-            dense=True,
-        )
-        self.motor_codificador = self.codificador_service.motor
-        self.check_cod_ch = ft.Checkbox(label="CH", value=True)
-        self.check_cod_ll = ft.Checkbox(label="LL", value=True)
-        self.check_cod_ñ = ft.Checkbox(label="Ñ", value=True)
         self.resultados_busqueda = ft.Column(
             expand=True,
             scroll=ft.ScrollMode.AUTO,
             spacing=6,
         )
+        self.ultimos_resultados_busqueda = []
+        self.ultima_busqueda_texto = ""
         self.panel_lectura = ft.ListView(
             expand=True,
             spacing=6,
@@ -188,6 +247,25 @@ class BibliaView:
             dense=True,
             on_submit=self.ir_a_referencia,
             on_tap_outside=lambda e: ocultar_teclado(self.page, e.control),
+        )
+
+        self.random_categoria_texto = ft.Text(
+            self.categoria_random.upper(),
+            size=11,
+            weight=ft.FontWeight.BOLD,
+            color=AZUL_ACCENTO,
+        )
+        self.random_referencia_texto = ft.Text(
+            self.versiculo_random_referencia,
+            size=15,
+            weight=ft.FontWeight.BOLD,
+            color=VIOLETA_ACCENTO,
+        )
+        self.random_versiculo_texto = ft.Text(
+            self.versiculo_random_texto,
+            size=15,
+            color=TEXTO_PRINCIPAL,
+            selectable=True,
         )
 
         self.dropdown_libro = ft.Dropdown(
@@ -291,6 +369,8 @@ class BibliaView:
         if hasattr(self, "busqueda"):
             self.busqueda.value = ""
         self.resultados_busqueda.controls.clear()
+        self.ultimos_resultados_busqueda = []
+        self.ultima_busqueda_texto = ""
         try:
             self.busqueda.update()
             self.resultados_busqueda.update()
@@ -322,13 +402,46 @@ class BibliaView:
             self.dropdown_modo.value = self.modo_vista
 
     def _normalizar_texto_busqueda(self, texto):
-        reemplazos = str.maketrans("áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN")
-        return str(texto or "").translate(reemplazos).lower().strip()
+        texto = str(texto or "").strip().lower().replace(".", " ")
+        texto = unicodedata.normalize("NFD", texto)
+        texto = "".join(
+            caracter
+            for caracter in texto
+            if unicodedata.category(caracter) != "Mn"
+        )
+        texto = re.sub(r"\s+", " ", texto)
+        return texto.strip()
+
+    def _normalizar_abreviatura_referencia(self, texto):
+        return self._normalizar_texto_busqueda(texto).replace(" ", "")
+
+    def _mapa_abreviaturas_libros(self):
+        mapa = {}
+
+        for libro in self.libros or []:
+            nombre = libro.get("nombre", "")
+            normalizado = self._normalizar_texto_busqueda(nombre)
+            compacto = self._normalizar_abreviatura_referencia(nombre)
+            mapa[normalizado] = libro
+            mapa[compacto] = libro
+
+            for alias in ABREVIATURAS_LIBROS.get(nombre, ()):
+                mapa[self._normalizar_texto_busqueda(alias)] = libro
+                mapa[self._normalizar_abreviatura_referencia(alias)] = libro
+
+        return mapa
 
     def _buscar_libro_por_nombre(self, nombre):
         objetivo = self._normalizar_texto_busqueda(nombre)
         if not objetivo:
             return None
+
+        mapa_abreviaturas = self._mapa_abreviaturas_libros()
+        libro_por_alias = mapa_abreviaturas.get(objetivo) or mapa_abreviaturas.get(
+            self._normalizar_abreviatura_referencia(nombre)
+        )
+        if libro_por_alias:
+            return libro_por_alias
 
         for libro in self.libros or []:
             nombre_libro = libro.get("nombre", "")
@@ -348,7 +461,7 @@ class BibliaView:
         if not texto:
             return None
 
-        coincidencia = re.match(r"^(.+?)\s+(\d+)(?::(\d+))?$", texto)
+        coincidencia = re.match(r"^(.+?)\.?\s*(\d+)(?::\s*(\d+))?$", texto)
         if not coincidencia:
             return None
 
@@ -588,13 +701,15 @@ class BibliaView:
         lectura = self._panel_lectura()
         busqueda = self._panel_busqueda()
 
-        if self.responsive.is_mobile():
+        if not self.responsive.is_desktop():
             return ft.Column(
                 expand=True,
                 spacing=8,
                 controls=[
                     ft.Row(
+                        wrap=True,
                         spacing=6,
+                        run_spacing=6,
                         controls=[
                             ft.ElevatedButton(
                                 "Lectura",
@@ -606,11 +721,22 @@ class BibliaView:
                                 bgcolor=(PERLA_VIOLETA if self.seccion_movil == "buscar" else None),
                                 on_click=lambda e: self.cambiar_seccion_movil("buscar"),
                             ),
+                            ft.ElevatedButton(
+                                "Azar",
+                                bgcolor=(PERLA_VIOLETA if self.seccion_movil == "azar" else None),
+                                on_click=lambda e: self.cambiar_seccion_movil("azar"),
+                            ),
                         ],
                     ),
                     ft.Container(
                         expand=True,
-                        content=(lectura if self.seccion_movil == "lectura" else busqueda),
+                        content=(
+                            lectura
+                            if self.seccion_movil == "lectura"
+                            else self._panel_versiculo_random()
+                            if self.seccion_movil == "azar"
+                            else busqueda
+                        ),
                     ),
                 ],
             )
@@ -634,7 +760,6 @@ class BibliaView:
                             self._panel_ir_a_referencia(),
                             busqueda,
                             self._panel_versiculo_random(),
-                            self._panel_notas_biblicas(),
                         ],
                     ),
                 ),
@@ -715,11 +840,35 @@ class BibliaView:
         referencia, texto = self._obtener_versiculo_random()
         self.versiculo_random_referencia = referencia
         self.versiculo_random_texto = texto
-        self.router.refrescar()
+        self._actualizar_controles_random()
 
     def cambiar_categoria_random(self, categoria):
         self.categoria_random = categoria
         self.refrescar_versiculo_random()
+
+    def _actualizar_controles_random(self):
+        if not hasattr(self, "random_referencia_texto"):
+            self.page.update()
+            return
+
+        self.random_categoria_texto.value = self.categoria_random.upper()
+        self.random_referencia_texto.value = self.versiculo_random_referencia
+        self.random_versiculo_texto.value = self.versiculo_random_texto
+
+        for control in (
+            self.random_categoria_texto,
+            self.random_referencia_texto,
+            self.random_versiculo_texto,
+        ):
+            try:
+                control.update()
+            except Exception:
+                pass
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def _chip_categoria_random(self, categoria):
         seleccionado = self.categoria_random == categoria
@@ -797,24 +946,9 @@ class BibliaView:
                             tight=True,
                             spacing=8,
                             controls=[
-                                ft.Text(
-                                    self.categoria_random.upper(),
-                                    size=11,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=AZUL_ACCENTO,
-                                ),
-                                ft.Text(
-                                    self.versiculo_random_referencia,
-                                    size=15,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=VIOLETA_ACCENTO,
-                                ),
-                                ft.Text(
-                                    self.versiculo_random_texto,
-                                    size=15,
-                                    color=TEXTO_PRINCIPAL,
-                                    selectable=True,
-                                ),
+                                self.random_categoria_texto,
+                                self.random_referencia_texto,
+                                self.random_versiculo_texto,
                             ],
                         ),
                     ),
@@ -874,157 +1008,6 @@ class BibliaView:
         except Exception:
             return ""
 
-    def guardar_nota_biblica(self, e=None):
-        clave = self._verso_activo()
-        if not clave:
-            self._snack("Seleccione un versiculo para guardar una nota.")
-            return
-
-        referencia = self._referencia_desde_clave_verso(clave)
-        texto = self._texto_desde_clave_verso(clave)
-        nota = getattr(self.nota_biblia_input, "value", "") or ""
-        self.notas_biblia_service.guardar(clave, referencia, texto, nota)
-        self._snack("Nota biblica guardada.")
-        self.router.refrescar()
-
-    def eliminar_nota_biblica(self, e=None):
-        clave = self._verso_activo()
-        if not clave:
-            self._snack("Seleccione un versiculo para eliminar una nota.")
-            return
-
-        self.notas_biblia_service.eliminar(clave)
-        self._snack("Nota biblica eliminada.")
-        self.router.refrescar()
-
-    def copiar_nota_biblica(self, e=None):
-        clave = self._verso_activo()
-        if not clave:
-            self._snack("Seleccione un versiculo para copiar la nota.")
-            return
-
-        referencia = self._referencia_desde_clave_verso(clave)
-        texto = self._texto_desde_clave_verso(clave)
-        nota = self.notas_biblia_service.obtener(clave)
-
-        if not nota.strip():
-            self._snack("Este versiculo no tiene nota.")
-            return
-
-        copiar_al_portapapeles(self.page, f"{referencia}\n{texto}\n\nNota:\n{nota}")
-        self._snack("Nota copiada.")
-
-    def _panel_notas_biblicas(self):
-        clave = self._verso_activo()
-        referencia = self._referencia_desde_clave_verso(clave) if clave else "Seleccione un versículo"
-        texto = self._texto_desde_clave_verso(clave) if clave else ""
-        nota = self.notas_biblia_service.obtener(clave) if clave else ""
-
-        self.nota_biblia_input.value = nota
-        self.nota_biblia_input.disabled = not bool(clave)
-
-        contenido = [
-            self._titulo_seccion("Notas personales", ft.Icons.NOTE_ALT, AZUL_ACCENTO),
-            ft.Text(
-                referencia,
-                size=13,
-                weight=ft.FontWeight.BOLD,
-                color=TEXTO_PRINCIPAL,
-            ),
-        ]
-
-        if texto:
-            contenido.append(
-                ft.Text(
-                    texto,
-                    size=12,
-                    color=TEXTO_SECUNDARIO,
-                    max_lines=4,
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                )
-            )
-        else:
-            contenido.append(
-                ft.Text(
-                    "Toque un versiculo para escribir una nota personal.",
-                    size=12,
-                    color=TEXTO_SECUNDARIO,
-                )
-            )
-
-        contenido.extend([
-            self.nota_biblia_input,
-            ft.Row(
-                wrap=True,
-                spacing=8,
-                controls=[
-                    ft.ElevatedButton(
-                        "Guardar nota",
-                        icon=ft.Icons.SAVE,
-                        disabled=not bool(clave),
-                        on_click=self.guardar_nota_biblica,
-                    ),
-                    ft.OutlinedButton(
-                        "Copiar",
-                        icon=ft.Icons.CONTENT_COPY,
-                        disabled=not bool(clave),
-                        on_click=self.copiar_nota_biblica,
-                    ),
-                    ft.OutlinedButton(
-                        "Eliminar",
-                        icon=ft.Icons.DELETE_OUTLINE,
-                        disabled=not bool(clave),
-                        on_click=self.eliminar_nota_biblica,
-                    ),
-                ],
-            ),
-        ])
-
-        notas = self.notas_biblia_service.listar()[:5]
-        if notas:
-            contenido.append(ft.Divider(height=1, color=BORDE_SUAVE))
-            contenido.append(ft.Text("Últimas notas", size=12, weight=ft.FontWeight.BOLD, color=TEXTO_SECUNDARIO))
-            for item in notas:
-                contenido.append(
-                    ft.Container(
-                        padding=10,
-                        border_radius=12,
-                        bgcolor=GRIS_SUAVE,
-                        border=ft.Border.all(1, BORDE_SUAVE),
-                        on_click=lambda e, c=item.get("clave"): self.abrir_nota_biblica(c),
-                        content=ft.Column(
-                            tight=True,
-                            spacing=3,
-                            controls=[
-                                ft.Text(item.get("referencia", ""), size=12, weight=ft.FontWeight.BOLD, color=TEXTO_PRINCIPAL),
-                                ft.Text(item.get("nota", ""), size=11, color=TEXTO_SECUNDARIO, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
-                            ],
-                        ),
-                    )
-                )
-
-        return self._tarjeta_moderna(
-            padding=16,
-            content=ft.Column(
-                tight=True,
-                spacing=10,
-                controls=contenido,
-            ),
-        )
-
-    def abrir_nota_biblica(self, clave):
-        libro, capitulo, versiculo = self._desarmar_clave_verso(clave)
-        if not libro or not capitulo or not versiculo:
-            return
-
-        self.libro_actual = libro
-        self.capitulo_actual = capitulo
-        self.modo_vista = "Versiculos"
-        self.verso_seleccionado = clave
-        self.ultimo_verso_accionado = clave
-        self._guardar_ultima_lectura()
-        self.router.refrescar()
-
     def _panel_lectura(self):
         if not self.libros:
             return self._tarjeta_moderna(
@@ -1053,12 +1036,12 @@ class BibliaView:
                         ],
                     ),
                     self._navegacion_lectura(),
-                    self._barra_codificacion(),
                     self._barra_resaltado(),
                     ft.Divider(height=1, color=BORDE_SUAVE),
                     ft.Container(
                         expand=True,
                         padding=ft.Padding(left=4, top=4, right=4, bottom=4),
+                        on_click=self.deseleccionar_actual,
                         content=self.panel_lectura,
                     ),
                 ],
@@ -1105,12 +1088,6 @@ class BibliaView:
                 ],
             ),
         )
-
-    def _barra_codificacion(self):
-        # Oculta las opciones visuales de CH / LL / Ñ.
-        # La codificación usa siempre el abecedario español antiguo de 29 letras.
-        return ft.Container(height=0)
-
 
     def _panel_ir_a_referencia(self):
         return self._tarjeta_moderna(
@@ -1168,6 +1145,12 @@ class BibliaView:
                                 on_click=lambda e: self.copiar_seleccion(),
                             ),
                             ft.IconButton(
+                                icon=ft.Icons.SAVE_ALT,
+                                tooltip="Guardar resultados de busqueda",
+                                icon_color=NARANJA_ACCENTO,
+                                on_click=self.guardar_busqueda,
+                            ),
+                            ft.IconButton(
                                 icon=ft.Icons.CLOSE,
                                 tooltip="Limpiar busqueda",
                                 icon_color=TEXTO_SECUNDARIO,
@@ -1176,12 +1159,239 @@ class BibliaView:
                         ],
                     ),
                     ft.Container(
-                        expand=True,
+                        height=260 if self.responsive.is_mobile() else 360,
+                        border=ft.Border.all(1, BORDE_SUAVE),
+                        border_radius=14,
+                        padding=8,
+                        bgcolor=ft.Colors.with_opacity(0.42, ft.Colors.WHITE),
                         content=self.resultados_busqueda,
                     ),
                 ],
             ),
         )
+
+    def dialog_palabras_cordero(self, e=None):
+        resultados = self._versiculos_palabras_cordero()
+        libros_disponibles = []
+
+        for resultado in resultados:
+            libro = resultado.get("libro", "")
+            if libro and libro not in libros_disponibles:
+                libros_disponibles.append(libro)
+
+        selector_libro = ft.Dropdown(
+            label="Filtrar por libro",
+            value="Todos",
+            options=[ft.dropdown.Option("Todos")] + [
+                ft.dropdown.Option(libro)
+                for libro in libros_disponibles
+            ],
+        )
+        alto_pagina = getattr(self.page, "height", None)
+        if alto_pagina is None and hasattr(self.page, "window"):
+            alto_pagina = getattr(self.page.window, "height", None)
+        alto_dialogo = max(430, min(620, int((alto_pagina or 760) - 150)))
+        lista = ft.ListView(
+            expand=True,
+            spacing=8,
+            padding=ft.Padding(left=0, top=0, right=8, bottom=0),
+        )
+        contador = ft.Text(size=12, color=TEXTO_SECUNDARIO)
+
+        def resultados_visibles():
+            libro = selector_libro.value or "Todos"
+
+            if libro == "Todos":
+                return resultados
+
+            return [
+                resultado
+                for resultado in resultados
+                if resultado.get("libro") == libro
+            ]
+
+        def cerrar(ev=None):
+            dialog.open = False
+            self.page.update()
+            self.router.refrescar()
+
+        def actualizar_contador():
+            total = len(self.versos_compartir)
+            visibles = len(resultados_visibles())
+            contador.value = (
+                f"{visibles} visibles | {total} seleccionado"
+                if total == 1
+                else f"{visibles} visibles | {total} seleccionados"
+            )
+            try:
+                contador.update()
+            except (RuntimeError, AssertionError):
+                pass
+
+        def alternar(vid):
+            self.toggle_verso_compartir(vid, refrescar=False)
+            renderizar_lista()
+            actualizar_contador()
+
+        def seleccionar_todos(ev=None):
+            for resultado in resultados_visibles():
+                self.versos_compartir.add(resultado["id"])
+            self.modo_compartir_multiple = True
+            renderizar_lista()
+            actualizar_contador()
+
+        def deseleccionar_todos(ev=None):
+            self.versos_compartir.clear()
+            renderizar_lista()
+            actualizar_contador()
+
+        def abrir(vid):
+            cerrar()
+            self.ir_a_verso_clave(vid)
+
+        def compartir(ev=None):
+            if not self.versos_compartir:
+                self._snack("Seleccione al menos un versiculo.")
+                return
+            cerrar()
+            self.compartir_seleccion()
+
+        def renderizar_lista():
+            lista.controls.clear()
+            visibles = resultados_visibles()
+
+            if not visibles:
+                lista.controls.append(
+                    ft.Text(
+                        "No se detectaron palabras en rojo con la regla actual.",
+                        color=TEXTO_SECUNDARIO,
+                    )
+                )
+            else:
+                for resultado in visibles:
+                    vid = resultado["id"]
+                    seleccionado = vid in self.versos_compartir
+                    lista.controls.append(
+                        ft.Container(
+                            padding=10,
+                            border_radius=14,
+            bgcolor="#FFF7D6" if seleccionado else ft.Colors.WHITE,
+                            border=ft.Border.all(
+                                2 if seleccionado else 1,
+                                NARANJA_ACCENTO if seleccionado else BORDE_SUAVE,
+                            ),
+                            content=ft.Row(
+                                spacing=8,
+                                vertical_alignment=ft.CrossAxisAlignment.START,
+                                controls=[
+                                    ft.Checkbox(
+                                        value=seleccionado,
+                                        tooltip=(
+                                            "Quitar de la seleccion"
+                                            if seleccionado
+                                            else "Agregar a la seleccion"
+                                        ),
+                                        on_change=lambda ev, v=vid: alternar(v),
+                                    ),
+                                    ft.Container(
+                                        expand=True,
+                                        on_click=lambda ev, v=vid: alternar(v),
+                                        content=ft.Column(
+                                            tight=True,
+                                            spacing=4,
+                                            controls=[
+                                                ft.Text(
+                                                    resultado["referencia"],
+                                                    size=13,
+                                                    weight=ft.FontWeight.BOLD,
+                                                    color=COLOR_PALABRAS_CORDERO,
+                                                ),
+                                                self._texto_versiculo_visual(
+                                                    resultado["libro"],
+                                                    resultado["texto"],
+                                                    TEXTO_PRINCIPAL,
+                                                    expand=False,
+                                                ),
+                                            ],
+                                        ),
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.Icons.OPEN_IN_NEW,
+                                        tooltip="Abrir versiculo",
+                                        icon_color=TEXTO_SECUNDARIO,
+                                        on_click=lambda ev, v=vid: abrir(v),
+                                    ),
+                                ],
+                            ),
+                        )
+                    )
+
+            try:
+                lista.update()
+            except (RuntimeError, AssertionError):
+                pass
+
+        def cambiar_filtro(ev=None):
+            renderizar_lista()
+            actualizar_contador()
+
+        selector_libro.on_select = cambiar_filtro
+        renderizar_lista()
+        actualizar_contador()
+
+        acciones_inferiores = ft.Container(
+            padding=ft.Padding(left=0, top=10, right=0, bottom=0),
+            border=ft.Border(
+                top=ft.BorderSide(1, BORDE_SUAVE),
+            ),
+            bgcolor=ft.Colors.WHITE,
+            content=ft.Row(
+                wrap=True,
+                spacing=8,
+                run_spacing=8,
+                alignment=ft.MainAxisAlignment.END,
+                controls=[
+                    ft.TextButton("Seleccionar todo", on_click=seleccionar_todos),
+                    ft.TextButton("Deseleccionar todo", on_click=deseleccionar_todos),
+                    ft.ElevatedButton(
+                        "Compartir seleccion",
+                        icon=ft.Icons.SHARE,
+                        on_click=compartir,
+                    ),
+                    ft.TextButton("Cerrar", on_click=cerrar),
+                ],
+            ),
+        )
+
+        dialog = ft.AlertDialog(
+            title=ft.Text("Palabras del Cordero"),
+            content=ft.Container(
+                width=760,
+                height=alto_dialogo,
+                content=ft.Column(
+                    expand=True,
+                    spacing=12,
+                    controls=[
+                        ft.Text(
+                            "Versiculos donde la app detecta las palabras en rojo.",
+                            size=12,
+                            color=TEXTO_SECUNDARIO,
+                        ),
+                        selector_libro,
+                        contador,
+                        ft.Container(
+                            expand=True,
+                            content=lista,
+                        ),
+                        acciones_inferiores,
+                    ],
+                ),
+            ),
+        )
+
+        self.page.overlay.append(dialog)
+        dialog.open = True
+        self.page.update()
 
     def _barra_resaltado(self):
         tamanio = 26 if self.responsive.is_mobile() else 28
@@ -1216,6 +1426,9 @@ class BibliaView:
             ft.IconButton(icon=ft.Icons.FORMAT_COLOR_RESET, tooltip="Quitar color seleccionado", icon_color=TEXTO_SECUNDARIO, on_click=lambda e: self.quitar_color_objetivo()),
             ft.IconButton(icon=ft.Icons.SAVE_ALT, tooltip="Guardar fragmento", icon_color=NARANJA_ACCENTO, on_click=lambda e: self.guardar_fragmento()),
             ft.IconButton(icon=ft.Icons.CONTENT_COPY, tooltip="Copiar capitulo", icon_color=AZUL_ACCENTO, on_click=lambda e: self.copiar_capitulo()),
+            ft.IconButton(icon=ft.Icons.RECORD_VOICE_OVER, tooltip="Ver palabras del Cordero", icon_color=COLOR_PALABRAS_CORDERO, on_click=lambda e: self.dialog_palabras_cordero()),
+            ft.IconButton(icon=ft.Icons.SELECT_ALL, tooltip="Seleccion multiple de versiculos", icon_color=NARANJA_ACCENTO if self.modo_compartir_multiple else TEXTO_SECUNDARIO, on_click=lambda e: self.toggle_modo_compartir_multiple()),
+            ft.IconButton(icon=ft.Icons.CLEAR_ALL, tooltip="Limpiar seleccion multiple", icon_color=TEXTO_SECUNDARIO, on_click=lambda e: self.limpiar_seleccion_multiple()),
             ft.IconButton(icon=ft.Icons.SHARE, tooltip="Compartir seleccion", icon_color=VIOLETA_ACCENTO, on_click=lambda e: self.compartir_seleccion()),
             ft.IconButton(icon=ft.Icons.FILTER_ALT, tooltip="Ver marcados por color", icon_color=VERDE_ACCENTO, on_click=lambda e: self.dialog_versiculos_por_color()),
         ]
@@ -1232,6 +1445,12 @@ class BibliaView:
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Text("Resaltado", size=13, weight=ft.FontWeight.BOLD, color=TEXTO_PRINCIPAL),
+                    ft.Text(
+                        f"{len(self.versos_compartir)} seleccionados",
+                        size=12,
+                        color=NARANJA_ACCENTO if self.versos_compartir else TEXTO_SECUNDARIO,
+                        visible=self.modo_compartir_multiple or bool(self.versos_compartir),
+                    ),
                 ] + colores + acciones,
             ),
         )
@@ -1731,7 +1950,7 @@ class BibliaView:
             content=contenedor,
         )
 
-    def _texto_versiculo_visual(self, libro, texto, color_base):
+    def _texto_versiculo_visual(self, libro, texto, color_base, expand=True):
         texto = str(texto or "")
         inicio_rojo = self._inicio_palabras_cordero(libro, texto)
 
@@ -1739,7 +1958,7 @@ class BibliaView:
             return ft.Text(
                 texto,
                 color=color_base,
-                expand=True,
+                expand=expand,
             )
 
         return ft.Text(
@@ -1756,7 +1975,7 @@ class BibliaView:
                     ),
                 ),
             ],
-            expand=True,
+            expand=expand,
         )
 
     def _inicio_palabras_cordero(self, libro, texto):
@@ -1791,6 +2010,130 @@ class BibliaView:
 
         return None
 
+    def _es_versiculo_palabras_cordero(self, libro, texto):
+        return self._inicio_palabras_cordero(libro, texto) is not None
+
+    def _versiculos_palabras_cordero(self):
+        resultados = []
+
+        for libro in self.libros or []:
+            nombre_libro = libro.get("nombre", "")
+            capitulos = libro.get("capitulos", [])
+
+            for numero_capitulo, capitulo in enumerate(capitulos, start=1):
+                for numero_versiculo, texto in enumerate(capitulo, start=1):
+                    if not self._es_versiculo_palabras_cordero(nombre_libro, texto):
+                        continue
+
+                    clave = verso_id(nombre_libro, numero_capitulo, numero_versiculo)
+                    resultados.append(
+                        {
+                            "id": clave,
+                            "libro": nombre_libro,
+                            "capitulo": numero_capitulo,
+                            "versiculo": numero_versiculo,
+                            "referencia": f"{nombre_libro} {numero_capitulo}:{numero_versiculo}",
+                            "texto": texto,
+                        }
+                    )
+
+        return resultados
+
+    def _versos_ordenados_para_compartir(self, ids=None):
+        ids = set(ids or self.versos_compartir)
+        resultados = []
+
+        if not ids:
+            return resultados
+
+        for libro in self.libros or []:
+            nombre_libro = libro.get("nombre", "")
+
+            for numero_capitulo, capitulo in enumerate(libro.get("capitulos", []), start=1):
+                for numero_versiculo, texto in enumerate(capitulo, start=1):
+                    clave = verso_id(nombre_libro, numero_capitulo, numero_versiculo)
+
+                    if clave in ids:
+                        resultados.append(
+                            {
+                                "id": clave,
+                                "libro": nombre_libro,
+                                "capitulo": numero_capitulo,
+                                "versiculo": numero_versiculo,
+                                "referencia": f"{nombre_libro} {numero_capitulo}:{numero_versiculo}",
+                                "texto": texto,
+                            }
+                        )
+
+        return resultados
+
+    def _texto_versos_compartir(self, versos):
+        return "\n".join(
+            f"{verso['referencia']} {verso['texto']}"
+            for verso in versos
+        )
+
+    def toggle_modo_compartir_multiple(self):
+        self.modo_compartir_multiple = not self.modo_compartir_multiple
+
+        if self.modo_compartir_multiple:
+            self.verso_seleccionado = None
+            self.objetivo_color = None
+            mensaje = "Seleccion multiple activada. Toque versiculos para agregarlos o quitarlos."
+        else:
+            mensaje = "Seleccion multiple desactivada."
+
+        self._snack(mensaje)
+        self.router.refrescar()
+
+    def limpiar_seleccion_multiple(self, e=None):
+        self.versos_compartir.clear()
+        self.modo_compartir_multiple = False
+        self._snack("Seleccion multiple limpia.")
+        self.router.refrescar()
+
+    def tocar_versiculo(self, verso):
+        if self.modo_compartir_multiple:
+            self.toggle_verso_compartir(verso)
+            return
+
+        self.seleccionar_verso(verso)
+
+    def toggle_verso_compartir(self, verso, refrescar=True):
+        if verso in self.versos_compartir:
+            self.versos_compartir.remove(verso)
+        else:
+            self.versos_compartir.add(verso)
+
+        self.ultimo_verso_accionado = verso
+
+        if refrescar:
+            self.router.refrescar()
+
+    def ir_a_verso_clave(self, clave):
+        libro, capitulo, versiculo = self._desarmar_clave_verso(clave)
+
+        if not libro or not capitulo or not versiculo:
+            return
+
+        self.libro_actual = libro
+        self.capitulo_actual = capitulo
+        self.dropdown_libro.value = libro
+        self.dropdown_capitulo.options = self._opciones_capitulos()
+        self.dropdown_capitulo.value = str(capitulo)
+        self.modo_vista = "Versiculos"
+        self.dropdown_modo.value = self.modo_vista
+        self.verso_seleccionado = clave
+        self.ultimo_verso_accionado = clave
+        self._agregar_historial_referencia(
+            libro,
+            capitulo,
+            versiculo,
+            self._texto_versiculo(libro, capitulo, versiculo),
+        )
+        self._guardar_ultima_lectura()
+        self.router.refrescar()
+
     def _render_versiculos(self):
         capitulo = self._capitulo_actual()
 
@@ -1800,6 +2143,7 @@ class BibliaView:
             clave_numero = self._clave_numero_verso(vid)
             resaltado_numero = self.resaltados.get(clave_numero)
             seleccionado = self.verso_seleccionado == vid
+            seleccionado_multiple = vid in self.versos_compartir
             verso_marcado = self._esta_marcado_para_color(vid)
             numero_seleccionado = self._objetivo_base() == clave_numero
             color_fondo = self._hex_color(resaltado)
@@ -1807,8 +2151,8 @@ class BibliaView:
 
             self.panel_lectura.controls.append(
                 ft.GestureDetector(
-                    on_tap=lambda e, v=vid: self.seleccionar_verso(v),
-                    on_double_tap=lambda e, v=vid: self.codificar_versiculo_biblia(v),
+                    on_tap=lambda e, v=vid: self.tocar_versiculo(v),
+                    on_double_tap=lambda e, v=vid: self.doble_tap_verso(v),
                     on_long_press=lambda e, v=vid: self.elegir_modo_color_identificador(
                         self._clave_numero_verso(v)
                     ),
@@ -1820,11 +2164,15 @@ class BibliaView:
                         bgcolor=(
                             color_fondo
                             if resaltado
+                            else "#FFF7D6"
+                            if seleccionado_multiple
                             else PERLA_VIOLETA if seleccionado or verso_marcado else ft.Colors.WHITE
                         ),
                         border=ft.Border.all(
-                            2 if seleccionado or verso_marcado else 1,
-                            VIOLETA_IOS
+                            2 if seleccionado or verso_marcado or seleccionado_multiple else 1,
+                            NARANJA_ACCENTO
+                            if seleccionado_multiple
+                            else VIOLETA_IOS
                             if seleccionado or verso_marcado
                             else BORDER_MARRON
                             if self._es_blanco_borde(resaltado)
@@ -1834,6 +2182,12 @@ class BibliaView:
                             vertical_alignment=ft.CrossAxisAlignment.START,
                             spacing=8,
                             controls=[
+                                ft.Icon(
+                                    ft.Icons.CHECK_CIRCLE,
+                                    size=18,
+                                    color=NARANJA_ACCENTO,
+                                    visible=seleccionado_multiple,
+                                ),
                                 self._icono_marcado(visible=verso_marcado),
                                 self._control_identificador(
                                     indice,
@@ -1852,19 +2206,44 @@ class BibliaView:
                     ),
                 )
             )
-
     def cambiar_modo(self, e):
         self.cambiar_modo_valor(e.control.value)
 
     def cambiar_modo_valor(self, valor):
         self.modo_vista = "Libros" if valor == "Completa" else valor
         self.dropdown_modo.value = valor
+        self.verso_seleccionado = None
+        self.ultimo_verso_accionado = None
         self._guardar_ultima_lectura()
         self.router.refrescar()
 
     def cambiar_seccion_movil(self, seccion):
         self.seccion_movil = seccion
         self.router.refrescar()
+
+    def deseleccionar_actual(self, e=None):
+        hay_seleccion = any(
+            [
+                self.verso_seleccionado,
+                self.objetivo_color,
+                self.objetivo_color_control,
+                self.versos_compartir,
+            ]
+        )
+
+        if not hay_seleccion:
+            return
+
+        self.verso_seleccionado = None
+        self.objetivo_color = None
+        self.objetivo_color_control = None
+        self.versos_compartir.clear()
+
+        try:
+            self._render_lectura()
+            self.page.update()
+        except Exception:
+            self.router.refrescar()
 
     def volver_lectura(self):
         if self.modo_vista == "Versiculos":
@@ -1968,6 +2347,19 @@ class BibliaView:
         self.ultimo_verso_accionado = verso
         self._render_lectura()
         self.page.update()
+
+    def doble_tap_verso(self, verso):
+        if verso in self.resaltados:
+            self.resaltados.pop(verso, None)
+            guardar_resaltados(self.resaltados)
+            self.verso_seleccionado = None
+            self.ultimo_verso_accionado = None
+            self._snack("Color del versiculo quitado.")
+            self._render_lectura()
+            self.page.update()
+            return
+
+        self.codificar_versiculo_biblia(verso)
 
     def seleccionar_verso_para_color_completo(self, verso):
         self.marcar_para_colorear(
@@ -2204,7 +2596,19 @@ class BibliaView:
 
     def quitar_color_objetivo(self):
         if not self.objetivo_color:
-            self._snack("Marque primero un elemento con doble click.")
+            verso = self.verso_seleccionado or self.ultimo_verso_accionado
+
+            if verso and verso in self.resaltados:
+                self.resaltados.pop(verso, None)
+                guardar_resaltados(self.resaltados)
+                self.verso_seleccionado = None
+                self.ultimo_verso_accionado = None
+                self._snack("Color del versiculo quitado.")
+                self._render_lectura()
+                self.page.update()
+                return
+
+            self._snack("Seleccione un versiculo o marque un elemento.")
             return
 
         clave, parte, indice = self._parse_objetivo_color()
@@ -2410,6 +2814,63 @@ class BibliaView:
             copiar_al_portapapeles(self.page, texto)
             self._snack("Lista copiada.")
 
+        def resultados_color_actual():
+            return self._versiculos_marcados_por_color(selector.value)
+
+        def compartir_color(e=None):
+            resultados = resultados_color_actual()
+
+            if not resultados:
+                self._snack("No hay versiculos para compartir.")
+                return
+
+            cerrar()
+            self._compartir_resultados_filtrados(
+                resultados,
+                f"Versiculos marcados en {selector.value}",
+            )
+
+        def guardar_color(e=None):
+            resultados = resultados_color_actual()
+
+            if not resultados:
+                self._snack("No hay versiculos para guardar.")
+                return
+
+            cerrar()
+            self._guardar_resultados_filtrados(
+                resultados,
+                f"Versiculos marcados en {selector.value}",
+            )
+
+        def compartir_todos(e=None):
+            resultados = self._versiculos_marcados_todos_colores()
+
+            if not resultados:
+                self._snack("No hay versiculos marcados para compartir.")
+                return
+
+            cerrar()
+            self._compartir_resultados_filtrados(
+                resultados,
+                "Todos los versiculos marcados por color",
+                incluir_color=True,
+            )
+
+        def guardar_todos(e=None):
+            resultados = self._versiculos_marcados_todos_colores()
+
+            if not resultados:
+                self._snack("No hay versiculos marcados para guardar.")
+                return
+
+            cerrar()
+            self._guardar_resultados_filtrados(
+                resultados,
+                "Todos los versiculos marcados por color",
+                incluir_color=True,
+            )
+
         def renderizar(e=None):
             color = selector.value
             resultados = self._versiculos_marcados_por_color(color)
@@ -2471,6 +2932,58 @@ class BibliaView:
                 pass
 
         selector.on_select = renderizar
+        acciones_filtro = ft.Container(
+            padding=ft.Padding(left=0, top=8, right=0, bottom=8),
+            border=ft.Border(
+                top=ft.BorderSide(1, BORDE_SUAVE),
+                bottom=ft.BorderSide(1, BORDE_SUAVE),
+            ),
+            content=ft.Column(
+                tight=True,
+                spacing=8,
+                controls=[
+                    ft.Row(
+                        wrap=True,
+                        spacing=8,
+                        run_spacing=8,
+                        controls=[
+                            ft.OutlinedButton(
+                                "Compartir color",
+                                icon=ft.Icons.SHARE,
+                                on_click=compartir_color,
+                            ),
+                            ft.OutlinedButton(
+                                "Guardar color",
+                                icon=ft.Icons.SAVE_ALT,
+                                on_click=guardar_color,
+                            ),
+                            ft.TextButton(
+                                "Copiar color",
+                                icon=ft.Icons.CONTENT_COPY,
+                                on_click=copiar_resultados,
+                            ),
+                        ],
+                    ),
+                    ft.Row(
+                        wrap=True,
+                        spacing=8,
+                        run_spacing=8,
+                        controls=[
+                            ft.ElevatedButton(
+                                "Compartir todo",
+                                icon=ft.Icons.SHARE,
+                                on_click=compartir_todos,
+                            ),
+                            ft.ElevatedButton(
+                                "Guardar todo",
+                                icon=ft.Icons.SAVE_ALT,
+                                on_click=guardar_todos,
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        )
         dialog = ft.AlertDialog(
             title=ft.Text("Versículos por color"),
             content=ft.Container(
@@ -2481,16 +2994,12 @@ class BibliaView:
                     controls=[
                         selector,
                         resumen,
+                        acciones_filtro,
                         lista,
                     ],
                 ),
             ),
             actions=[
-                ft.OutlinedButton(
-                    "Copiar lista",
-                    icon=ft.Icons.CONTENT_COPY,
-                    on_click=copiar_resultados,
-                ),
                 ft.TextButton("Cerrar", on_click=cerrar),
             ],
         )
@@ -2525,6 +3034,75 @@ class BibliaView:
                     )
 
         return resultados
+
+    def _versiculos_marcados_todos_colores(self):
+        resultados = []
+
+        for color in COLORES_RESALTADO:
+            for resultado in self._versiculos_marcados_por_color(color):
+                item = resultado.copy()
+                item["color"] = color
+                resultados.append(item)
+
+        return resultados
+
+    def _texto_resultados_filtrados(self, resultados, titulo, incluir_color=False):
+        lineas = [titulo, ""]
+
+        color_actual = None
+        for resultado in resultados:
+            color = resultado.get("color")
+
+            if incluir_color and color and color != color_actual:
+                if color_actual is not None:
+                    lineas.append("")
+                lineas.append(f"[{color}]")
+                color_actual = color
+
+            lineas.append(
+                (
+                    f"{resultado['libro']} "
+                    f"{resultado['capitulo']}:{resultado['versiculo']} "
+                    f"{resultado['texto']}"
+                )
+            )
+
+        return "\n".join(lineas).strip()
+
+    def _compartir_resultados_filtrados(self, resultados, titulo, incluir_color=False):
+        texto = self._texto_resultados_filtrados(resultados, titulo, incluir_color)
+        compartir_texto(self.page, texto, titulo)
+
+    def _guardar_resultados_filtrados(self, resultados, titulo, incluir_color=False):
+        texto = self._texto_resultados_filtrados(resultados, titulo, incluir_color)
+
+        def guardar_con_nombre(nombre, carpeta=None):
+            destino = carpeta or state.carpetas.obtener_por_nombre("FRAGMENTOS BIBLICOS")
+            state.guardados.guardar(
+                {
+                    "tipo": "fragmento_biblico",
+                    "carpeta": destino["nombre"] if destino else "FRAGMENTOS BIBLICOS",
+                    "carpeta_id": destino["id"] if destino else 3,
+                    "nombre": nombre,
+                    "palabra": nombre or titulo,
+                    "referencia": titulo,
+                    "alfabeto": "",
+                    "suma": texto,
+                    "resultado": "",
+                    "contenido": texto,
+                }
+            )
+            self._mostrar_guardado_correcto(nombre or titulo)
+
+        pedir_nombre_y_carpeta_guardado(
+            self.page,
+            "Guardar filtro biblico",
+            titulo,
+            state.carpetas,
+            "FRAGMENTOS BIBLICOS",
+            guardar_con_nombre,
+            "Se guardara en FRAGMENTOS BIBLICOS.",
+        )
 
 
     def _libro_por_nombre(self, nombre):
@@ -2602,13 +3180,7 @@ class BibliaView:
             self._snack("No hay texto para codificar.")
             return
 
-        self.motor_codificador.crear_diccionario(
-            usar_ch=True,
-            usar_ll=True,
-            usar_ñ=True,
-        )
-
-        datos = self.motor_codificador.codificar(texto)
+        datos = self.codificador_service.codificar_29(texto)
         detalle_visual = self._detalle_visual_codificacion(datos)
         destino_default = state.carpetas.obtener_por_nombre("FRAGMENTOS BIBLICOS")
         nombre_default = f"{referencia} codificado"
@@ -2739,6 +3311,13 @@ class BibliaView:
         self._mostrar_guardado_correcto(referencia)
 
     def copiar_seleccion(self):
+        versos = self._versos_ordenados_para_compartir()
+
+        if versos:
+            copiar_al_portapapeles(self.page, self._texto_versos_compartir(versos))
+            self._snack("Versiculos seleccionados copiados.")
+            return
+
         verso = self._verso_activo()
 
         if not verso:
@@ -2752,6 +3331,16 @@ class BibliaView:
         self._snack("Versiculo copiado.")
 
     def compartir_seleccion(self):
+        versos = self._versos_ordenados_para_compartir()
+
+        if versos:
+            compartir_texto(
+                self.page,
+                self._texto_versos_compartir(versos),
+                "Versiculos biblicos",
+            )
+            return
+
         verso = self._verso_activo()
 
         if not verso:
@@ -2792,22 +3381,57 @@ class BibliaView:
         self.resultados_busqueda.controls.clear()
 
         resultados = buscar_texto(self.libros, self.busqueda.value or "")
+        self.ultimos_resultados_busqueda = resultados
+        self.ultima_busqueda_texto = (self.busqueda.value or "").strip()
 
         for resultado in resultados[:80]:
+            vid = verso_id(
+                resultado["libro"],
+                resultado["capitulo"],
+                resultado["versiculo"],
+            )
+            seleccionado_multiple = vid in self.versos_compartir
+
             self.resultados_busqueda.controls.append(
                 ft.Container(
                     padding=8,
-                    bgcolor=ft.Colors.WHITE,
-                    border=ft.Border.all(1, ft.Colors.GREY_300),
+                    bgcolor="#FFF7D6" if seleccionado_multiple else ft.Colors.WHITE,
+                    border=ft.Border.all(
+                        2 if seleccionado_multiple else 1,
+                        NARANJA_ACCENTO if seleccionado_multiple else ft.Colors.GREY_300,
+                    ),
                     border_radius=6,
-                    on_click=lambda e, r=resultado: self.ir_a_resultado(r),
-                    content=ft.Text(
-                        (
-                            f"{resultado['libro']} "
-                            f"{resultado['capitulo']}:{resultado['versiculo']} "
-                            f"{resultado['texto']}"
-                        ),
-                        selectable=True,
+                    on_click=(
+                        (lambda e, v=vid: self.toggle_verso_compartir(v))
+                        if self.modo_compartir_multiple
+                        else (lambda e, r=resultado: self.ir_a_resultado(r))
+                    ),
+                    content=ft.Row(
+                        spacing=8,
+                        vertical_alignment=ft.CrossAxisAlignment.START,
+                        controls=[
+                            ft.Icon(
+                                ft.Icons.CHECK_CIRCLE,
+                                size=18,
+                                color=NARANJA_ACCENTO,
+                                visible=seleccionado_multiple,
+                            ),
+                            ft.Text(
+                                (
+                                    f"{resultado['libro']} "
+                                    f"{resultado['capitulo']}:{resultado['versiculo']} "
+                                    f"{resultado['texto']}"
+                                ),
+                                expand=True,
+                                selectable=True,
+                            ),
+                            ft.IconButton(
+                                icon=ft.Icons.OPEN_IN_NEW,
+                                tooltip="Abrir versiculo",
+                                icon_color=TEXTO_SECUNDARIO,
+                                on_click=lambda e, r=resultado: self.ir_a_resultado(r),
+                            ),
+                        ],
                     ),
                 )
             )
@@ -2818,6 +3442,62 @@ class BibliaView:
             )
 
         self.page.update()
+
+    def _texto_resultados_busqueda(self):
+        termino = self.ultima_busqueda_texto or "Busqueda"
+        lineas = [
+            f"Busqueda biblica: {termino}",
+            f"Resultados: {len(self.ultimos_resultados_busqueda)}",
+            "",
+        ]
+
+        for resultado in self.ultimos_resultados_busqueda:
+            lineas.append(
+                (
+                    f"{resultado['libro']} "
+                    f"{resultado['capitulo']}:{resultado['versiculo']} "
+                    f"{resultado['texto']}"
+                )
+            )
+
+        return "\n".join(lineas)
+
+    def guardar_busqueda(self, e=None):
+        if not self.ultimos_resultados_busqueda:
+            self._snack("Primero realice una busqueda con resultados.")
+            return
+
+        termino = self.ultima_busqueda_texto or "Busqueda"
+        nombre_default = f"Busqueda {termino}"
+        texto = self._texto_resultados_busqueda()
+
+        def guardar_con_nombre(nombre, carpeta=None):
+            destino = carpeta or state.carpetas.obtener_por_nombre("FRAGMENTOS BIBLICOS")
+            state.guardados.guardar(
+                {
+                    "tipo": "fragmento_biblico",
+                    "carpeta": destino["nombre"] if destino else "FRAGMENTOS BIBLICOS",
+                    "carpeta_id": destino["id"] if destino else 3,
+                    "nombre": nombre or nombre_default,
+                    "palabra": nombre or nombre_default,
+                    "referencia": f"Busqueda: {termino}",
+                    "alfabeto": "",
+                    "suma": texto,
+                    "resultado": len(self.ultimos_resultados_busqueda),
+                    "contenido": texto,
+                }
+            )
+            self._mostrar_guardado_correcto(nombre or nombre_default)
+
+        pedir_nombre_y_carpeta_guardado(
+            self.page,
+            "Guardar busqueda",
+            nombre_default,
+            state.carpetas,
+            "FRAGMENTOS BIBLICOS",
+            guardar_con_nombre,
+            "Se guardara en FRAGMENTOS BIBLICOS.",
+        )
 
     def ir_a_resultado(self, resultado):
         self.libro_actual = resultado["libro"]

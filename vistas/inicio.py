@@ -5,6 +5,7 @@ import flet as ft
 from services.codificador_service import CodificadorService
 from vistas.componentes import tarjeta_resultado
 from ui.sidebar import AppSidebar
+from ui.compartir import compartir_texto
 from ui.tema import (
     PERLA_BORDE,
     PERLA_PANEL,
@@ -490,10 +491,24 @@ class InicioView:
             resultado=registro["resultado"],
             texto_boton="Guardar",
             funcion=lambda e, r=registro: self.confirmar_guardado(r),
+            funcion_compartir=lambda e, r=registro: self.compartir_tarjeta(r),
         )
 
         self.resultado_actual.controls.append(tarjeta)
         self.page.update()
+
+    def compartir_tarjeta(self, registro):
+        compartir_texto(
+            self.page,
+            (
+                "CODIGO ESCONDIDO 19\n\n"
+                f"Texto: {registro.get('palabra', '')}\n"
+                f"Abecedario: {registro.get('alfabeto', '')}\n"
+                f"Suma: {registro.get('suma', '')}\n"
+                f"Resultado: {registro.get('resultado', '')}"
+            ),
+            "Tarjeta CODIGO ESCONDIDO 19",
+        )
 
     # =====================================================
     # CONFIRMAR GUARDADO

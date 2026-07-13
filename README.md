@@ -11,3 +11,8 @@ https://matiasarg1888.github.io/ce19/
 Si GitHub Pages no esta habilitado, entrar al repositorio y activar:
 
 Settings > Pages > Build and deployment > Source: GitHub Actions
+
+## Crear instaladores
+
+Los accesos para crear Android y Windows estan en la carpeta `instalador`.
+Abrir `instalador/CREAR_INSTALADOR.bat` para elegir el destino.

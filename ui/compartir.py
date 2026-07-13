@@ -1,9 +1,51 @@
-from urllib.parse import quote
-import base64
+import asyncio
 from pathlib import Path
+from urllib.parse import quote
 
 import flet as ft
 from flet.controls.services.url_launcher import LaunchMode
+
+
+def _snack(page, mensaje):
+    try:
+        page.snack_bar = ft.SnackBar(ft.Text(mensaje))
+        page.snack_bar.open = True
+        page.update()
+    except Exception:
+        pass
+
+
+def _programar(page, tarea, *args):
+    try:
+        if hasattr(page, "run_task"):
+            futuro = page.run_task(tarea, *args)
+
+            def avisar_error(resultado):
+                try:
+                    error = resultado.exception()
+                except Exception:
+                    error = None
+
+                if error:
+                    _snack(page, "No se pudo abrir el panel de compartir.")
+
+            try:
+                futuro.add_done_callback(avisar_error)
+            except Exception:
+                pass
+
+            return True
+    except Exception:
+        pass
+
+    try:
+        if hasattr(page, "run_thread"):
+            page.run_thread(lambda: asyncio.run(tarea(*args)))
+            return True
+    except Exception:
+        pass
+
+    return False
 
 
 def _obtener_url_launcher(page):
@@ -24,26 +66,6 @@ def _obtener_url_launcher(page):
     return launcher
 
 
-def _programar(page, tarea, *args):
-    try:
-        if hasattr(page, "run_task"):
-            page.run_task(tarea, *args)
-            return True
-    except Exception:
-        return False
-
-    return False
-
-
-def _snack(page, mensaje):
-    try:
-        page.snack_bar = ft.SnackBar(ft.Text(mensaje))
-        page.snack_bar.open = True
-        page.update()
-    except Exception:
-        pass
-
-
 async def _abrir_url_async(page, url, modo=LaunchMode.EXTERNAL_APPLICATION):
     launcher = _obtener_url_launcher(page)
 
@@ -51,17 +73,19 @@ async def _abrir_url_async(page, url, modo=LaunchMode.EXTERNAL_APPLICATION):
         await launcher.launch_url(url, mode=modo)
         return True
     except Exception:
-        try:
-            await launcher.launch_url(url, mode=LaunchMode.EXTERNAL_APPLICATION)
-            return True
-        except Exception:
-            pass
+        pass
+
+    try:
+        await launcher.launch_url(url, mode=LaunchMode.EXTERNAL_APPLICATION)
+        return True
+    except Exception:
+        pass
 
     try:
         await page.launch_url(url, web_popup_window=True)
         return True
     except Exception:
-        _snack(page, "No se pudo abrir el enlace para compartir.")
+        _snack(page, "No se pudo abrir el enlace.")
         return False
 
 
@@ -69,13 +93,13 @@ def _abrir_url(page, url, modo=LaunchMode.EXTERNAL_APPLICATION):
     return _programar(page, _abrir_url_async, page, url, modo)
 
 
-async def _copiar_texto_async(page, texto):
+async def _copiar_texto_async(page, texto, mensaje="Contenido copiado."):
     try:
         clipboard = getattr(page, "clipboard", None)
 
         if clipboard and hasattr(clipboard, "set"):
             await clipboard.set(str(texto))
-            _snack(page, "Contenido copiado.")
+            _snack(page, mensaje)
             return True
     except Exception:
         pass
@@ -84,8 +108,8 @@ async def _copiar_texto_async(page, texto):
     return False
 
 
-def _copiar_texto(page, texto):
-    return _programar(page, _copiar_texto_async, page, texto)
+def _copiar_texto(page, texto, mensaje="Contenido copiado."):
+    return _programar(page, _copiar_texto_async, page, texto, mensaje)
 
 
 async def _servicio_compartir_texto_async(page, texto, titulo):
@@ -118,7 +142,7 @@ def _mostrar_dialogo_compartir_texto(page, texto, titulo, urls):
         _servicio_compartir_texto(page, texto, titulo)
 
     def copiar_enlace(e=None):
-        _copiar_texto(page, urls[-1])
+        _copiar_texto(page, urls[-1], "Enlace copiado.")
 
     def copiar_texto(e=None):
         _copiar_texto(page, texto)
@@ -147,14 +171,8 @@ def _mostrar_dialogo_compartir_texto(page, texto, titulo, urls):
                 icon=ft.Icons.SHARE,
                 on_click=compartir_sistema,
             ),
-            ft.OutlinedButton(
-                "Copiar enlace",
-                on_click=copiar_enlace,
-            ),
-            ft.TextButton(
-                "Copiar texto",
-                on_click=copiar_texto,
-            ),
+            ft.OutlinedButton("Copiar enlace", on_click=copiar_enlace),
+            ft.TextButton("Copiar texto", on_click=copiar_texto),
             ft.TextButton("Cerrar", on_click=cerrar),
         ],
     )
@@ -174,81 +192,39 @@ def compartir_texto(page, texto, titulo="Compartir"):
         f"https://wa.me/?text={texto_url}",
     ]
 
-    return _mostrar_dialogo_compartir_texto(
-        page,
-        texto,
-        titulo,
-        urls_whatsapp,
-    )
+    return _mostrar_dialogo_compartir_texto(page, texto, titulo, urls_whatsapp)
 
 
-async def _compartir_imagen_base64_async(
-    page,
-    imagen_base64,
-    nombre,
-    titulo,
-    mime_type,
-):
-    try:
-        datos = base64.b64decode(imagen_base64)
-        archivo = ft.ShareFile(
-            data=datos,
-            mime_type=mime_type,
-            name=nombre,
-        )
-        servicio = ft.Share()
-        page.services.append(servicio)
-        page.update()
-        await servicio.share_files(
-            [archivo],
-            title=titulo,
-            text=titulo,
-            preview_thumbnail=archivo,
-        )
-        return True
-    except Exception:
-        _snack(page, "No se pudo abrir el panel de compartir imagen.")
-        return await _abrir_url_async(
-            page,
-            "https://wa.me/",
-            modo=LaunchMode.EXTERNAL_APPLICATION,
-        )
+def _mostrar_exportado(page, ruta, titulo="Archivo listo"):
+    ruta = Path(ruta)
 
-
-def _mostrar_dialogo_compartir_archivo(page, titulo, ejecutar_compartir, ayuda):
     def cerrar(e=None):
         dialog.open = False
         page.update()
 
-    def compartir(e=None):
+    def abrir_archivo(e=None):
         cerrar()
-        ejecutar_compartir()
+        _abrir_url(page, ruta.as_uri(), LaunchMode.EXTERNAL_APPLICATION)
 
-    def abrir_whatsapp(e=None):
-        cerrar()
-        _abrir_url(
-            page,
-            "whatsapp://send",
-            modo=LaunchMode.EXTERNAL_NON_BROWSER_APPLICATION,
-        )
+    def copiar(e=None):
+        _copiar_texto(page, ruta, "Ruta copiada.")
 
     dialog = ft.AlertDialog(
-        title=ft.Text("Compartir"),
-        content=ft.Text(ayuda),
+        title=ft.Text(titulo),
+        content=ft.Text(
+            "El archivo se guardo correctamente. Si el panel de compartir no se abre en este equipo, "
+            "puede abrir el archivo o copiar su ruta."
+        ),
         actions=[
             ft.ElevatedButton(
-                "WhatsApp / Apps",
-                icon=ft.Icons.CHAT,
-                on_click=compartir,
+                "Abrir archivo",
+                icon=ft.Icons.OPEN_IN_NEW,
+                on_click=abrir_archivo,
             ),
             ft.OutlinedButton(
-                "Compartir",
-                icon=ft.Icons.SHARE,
-                on_click=compartir,
-            ),
-            ft.TextButton(
-                "Abrir WhatsApp",
-                on_click=abrir_whatsapp,
+                "Copiar ruta",
+                icon=ft.Icons.CONTENT_COPY,
+                on_click=copiar,
             ),
             ft.TextButton("Cerrar", on_click=cerrar),
         ],
@@ -258,32 +234,6 @@ def _mostrar_dialogo_compartir_archivo(page, titulo, ejecutar_compartir, ayuda):
     dialog.open = True
     page.update()
     return True
-
-
-def compartir_imagen_base64(
-    page,
-    imagen_base64,
-    nombre="pizarra.jpg",
-    titulo="Compartir",
-    mime_type="image/jpeg",
-):
-    def ejecutar():
-        _programar(
-            page,
-            _compartir_imagen_base64_async,
-            page,
-            imagen_base64,
-            nombre,
-            titulo,
-            mime_type,
-        )
-
-    return _mostrar_dialogo_compartir_archivo(
-        page,
-        titulo,
-        ejecutar,
-        "Se abrira el panel para compartir. Elija WhatsApp para enviar la imagen.",
-    )
 
 
 async def _compartir_archivo_async(page, archivo, titulo, mime_type):
@@ -301,11 +251,17 @@ async def _compartir_archivo_async(page, archivo, titulo, mime_type):
                 )
             ],
             title=titulo,
+            text=titulo,
             subject=titulo,
+            download_fallback_enabled=True,
+            mail_to_fallback_enabled=True,
         )
         return True
     except Exception:
-        _snack(page, "No se pudo abrir el panel para exportar el archivo.")
+        try:
+            _mostrar_exportado(page, Path(archivo), "Archivo listo")
+        except Exception:
+            _snack(page, "No se pudo abrir el panel para exportar el archivo.")
         return False
 
 
@@ -315,20 +271,17 @@ def compartir_archivo(
     titulo="Exportar archivo",
     mime_type="application/octet-stream",
 ):
-    def ejecutar():
-        _programar(
-            page,
-            _compartir_archivo_async,
-            page,
-            archivo,
-            titulo,
-            mime_type,
-        )
-
-    return _mostrar_dialogo_compartir_archivo(
+    _snack(page, "Abriendo panel de compartir...")
+    iniciado = _programar(
         page,
+        _compartir_archivo_async,
+        page,
+        archivo,
         titulo,
-        ejecutar,
-        "Se abrira el panel para compartir. Elija WhatsApp para enviar el archivo.",
+        mime_type,
     )
 
+    if not iniciado:
+        return _mostrar_exportado(page, Path(archivo), "Archivo listo")
+
+    return True

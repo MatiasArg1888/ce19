@@ -174,6 +174,76 @@ def construir_intro(page, on_ingresar):
         ),
     )
 
+    def crear_capa_estrellas(cantidad, escala, opacidad, offset, duracion):
+        puntos = []
+
+        for indice in range(cantidad):
+            x = ancho * (((indice * 37) + 11) % 100) / 100
+            y = alto * (((indice * 53) + 19) % 100) / 100
+            tam = (1.4 + (indice % 4) * 0.65) * escala
+
+            puntos.append(
+                ft.Container(
+                    left=x,
+                    top=y,
+                    width=tam,
+                    height=tam,
+                    border_radius=tam,
+                    bgcolor=ft.Colors.with_opacity(
+                        opacidad * (0.58 + (indice % 5) * 0.09),
+                        ft.Colors.WHITE,
+                    ),
+                    shadow=ft.BoxShadow(
+                        blur_radius=5 + tam,
+                        spread_radius=0,
+                        color=ft.Colors.with_opacity(opacidad * 0.55, ft.Colors.WHITE),
+                        offset=ft.Offset(0, 0),
+                    ),
+                )
+            )
+
+        return ft.Container(
+            expand=True,
+            ignore_interactions=True,
+            offset=offset,
+            animate_offset=ft.Animation(duracion, ft.AnimationCurve.EASE_IN_OUT),
+            content=ft.Stack(expand=True, controls=puntos),
+        )
+
+    estrella_grande = ft.Container(
+        expand=True,
+        opacity=0.24,
+        scale=ft.Scale(1.0),
+        animate_opacity=ft.Animation(900, ft.AnimationCurve.EASE_IN_OUT),
+        animate_scale=ft.Animation(900, ft.AnimationCurve.EASE_IN_OUT),
+        image=ft.DecorationImage(
+            src=FONDO_INTRO_PC,
+            fit=ft.BoxFit.COVER,
+        ),
+    )
+
+    fondo_estrellas_adelante = crear_capa_estrellas(
+        cantidad=42,
+        escala=1.0,
+        opacidad=0.68,
+        offset=ft.Offset(-0.035, 0.018),
+        duracion=6200,
+    )
+    fondo_estrellas_atras = crear_capa_estrellas(
+        cantidad=34,
+        escala=0.8,
+        opacidad=0.42,
+        offset=ft.Offset(0.028, -0.018),
+        duracion=8200,
+    )
+    fondo_estrellas_profundo = crear_capa_estrellas(
+        cantidad=26,
+        escala=0.62,
+        opacidad=0.30,
+        offset=ft.Offset(0, 0.026),
+        duracion=10400,
+    )
+
     async def iniciar_audio_intro():
         if audio_intro is None:
             return
@@ -266,6 +336,40 @@ def construir_intro(page, on_ingresar):
         _seguro_update(indicacion)
         estado["listo_para_entrar"] = True
 
+    async def animar_estrella():
+        await asyncio.sleep(0.25)
+
+        while not estado["ingresando"]:
+            estrella_grande.scale = ft.Scale(1.035)
+            estrella_grande.opacity = 0.34
+            _seguro_update(estrella_grande)
+            await asyncio.sleep(0.95)
+
+            estrella_grande.scale = ft.Scale(0.985)
+            estrella_grande.opacity = 0.22
+            _seguro_update(estrella_grande)
+            await asyncio.sleep(0.95)
+
+    async def animar_estrellas():
+        await asyncio.sleep(0.20)
+
+        while not estado["ingresando"]:
+            fondo_estrellas_adelante.offset = ft.Offset(0.045, -0.028)
+            fondo_estrellas_atras.offset = ft.Offset(-0.038, 0.026)
+            fondo_estrellas_profundo.offset = ft.Offset(0.024, -0.035)
+            _seguro_update(fondo_estrellas_adelante)
+            _seguro_update(fondo_estrellas_atras)
+            _seguro_update(fondo_estrellas_profundo)
+            await asyncio.sleep(6.2)
+
+            fondo_estrellas_adelante.offset = ft.Offset(-0.048, 0.030)
+            fondo_estrellas_atras.offset = ft.Offset(0.040, -0.028)
+            fondo_estrellas_profundo.offset = ft.Offset(-0.026, 0.036)
+            _seguro_update(fondo_estrellas_adelante)
+            _seguro_update(fondo_estrellas_atras)
+            _seguro_update(fondo_estrellas_profundo)
+            await asyncio.sleep(6.2)
+
     def iniciar_animacion():
         try:
             page.update()
@@ -282,6 +386,8 @@ def construir_intro(page, on_ingresar):
 
         if hasattr(page, "run_task"):
             page.run_task(flujo_animacion)
+            page.run_task(animar_estrella)
+            page.run_task(animar_estrellas)
         else:
             asyncio.run(flujo_animacion())
 
@@ -300,6 +406,10 @@ def construir_intro(page, on_ingresar):
                     expand=True,
                     bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.BLACK),
                 ),
+                fondo_estrellas_profundo,
+                fondo_estrellas_atras,
+                fondo_estrellas_adelante,
+                estrella_grande,
                 ft.Container(
                     expand=True,
                     gradient=ft.RadialGradient(

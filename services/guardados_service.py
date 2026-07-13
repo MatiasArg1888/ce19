@@ -10,6 +10,7 @@ TIPOS_FILTRO_GUARDADOS = {
     "Pizarra": "pizarra",
     "Colores": "analisis_colores",
     "Tiempo": "tiempo",
+    "Calculadora": "calculo_biblico",
 }
 
 

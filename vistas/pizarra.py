@@ -1802,6 +1802,19 @@ class PizarraView:
     def actualizar_borrador(self, valor):
         self.borrador = int(float(valor))
 
+    def deseleccionar_actual(self, e=None):
+        if (
+            self.objeto_seleccionado is None
+            and not self.objetos_seleccionados
+            and self._cuadro_seleccion is None
+        ):
+            return
+
+        self.objeto_seleccionado = None
+        self.objetos_seleccionados = []
+        self._cuadro_seleccion = None
+        self._redibujar_lienzo()
+
     def cambiar_zoom(self, delta):
         self.zoom = max(0.3, min(2.5, self.zoom + delta))
         self._limitar_pan()
