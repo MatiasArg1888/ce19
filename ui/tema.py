@@ -39,7 +39,7 @@ FONDO_APP = "#FCFAFF"
 # =====================================================
 # FONDO GLOBAL DE TODA LA APP (NO AFECTA LA INTRO)
 # =====================================================
-FONDO_APP_IMAGEN = "fondo_app.png"
+FONDO_APP_IMAGEN = "fondo_app.webp"
 FONDO_IMAGEN_APP = FONDO_APP_IMAGEN
 SUPERFICIE_BLANCA = "#FFFFFF"
 SUPERFICIE_PERLADA = "#FFFEFC"

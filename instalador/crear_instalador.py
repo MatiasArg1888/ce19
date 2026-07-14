@@ -12,6 +12,34 @@ BUNDLE_ID = "com.flet.app_ce_19"
 ORG = "com.flet"
 VERSION = "1.0.0"
 ROOT = Path(__file__).resolve().parents[1]
+EXCLUSIONES_PAQUETE = [
+    ".git",
+    ".github",
+    ".venv",
+    "env",
+    "build",
+    "dist",
+    "dist_windows",
+    "backups",
+    "logs",
+    "storage",
+    "instalador",
+    "__pycache__",
+    "*.pyc",
+    "README.md",
+    ".gitignore",
+    "datos/exportaciones",
+    "datos/historial.json",
+    "datos/guardados.json",
+    "datos/carpetas.json",
+    "datos/config_tiempo.json",
+    "datos/analisis_colores_historial.json",
+    "datos/historial_referencias_biblia.json",
+    "datos/favoritos_biblia.json",
+    "datos/notas_biblia.json",
+    "datos/resaltados_biblia.json",
+    "datos/ultima_lectura_biblia.json",
+]
 
 DESTINOS = {
     "1": {
@@ -61,7 +89,7 @@ def normalizar_ruta_cmake(ruta):
 
 
 def comando_build(destino):
-    return [
+    comando = [
         str(flet_ejecutable()),
         "build",
         destino,
@@ -90,7 +118,15 @@ def comando_build(destino):
         "--no-rich-output",
         "--yes",
         "--skip-flutter-doctor",
+        "--cleanup-app",
+        "--exclude",
+        *EXCLUSIONES_PAQUETE,
     ]
+
+    if destino in {"apk", "aab"}:
+        comando.extend(["--arch", "arm64"])
+
+    return comando
 
 
 def ruta_cmake_visual_studio(ruta_instalacion=""):

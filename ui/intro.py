@@ -17,7 +17,7 @@ except Exception:
     fa = None
 
 
-FONDO_INTRO_PC = "intro_pc.png"
+FONDO_INTRO_PC = "intro_pc.webp"
 INTRO_AUDIO = "santo_santo_intro_loop.mp3"
 APOCALIPSIS_13_18 = (
     "Aqu\u00ed hay sabidur\u00eda. El que tiene entendimiento, cuente el n\u00famero de la bestia, "
