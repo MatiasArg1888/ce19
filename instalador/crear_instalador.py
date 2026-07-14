@@ -24,6 +24,7 @@ EXCLUSIONES_PAQUETE = [
     "logs",
     "storage",
     "instalador",
+    "web_shell",
     "__pycache__",
     "*.pyc",
     "README.md",

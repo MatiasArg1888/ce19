@@ -5,13 +5,18 @@ from core.rutas import ruta_datos
 
 class Historial:
 
-    def __init__(self):
+    def __init__(self, cargar_ahora=True):
         self.archivo = ruta_datos("historial.json")
         self.lista = []
-        self.cargar()
+        self._cargado = False
+        if cargar_ahora:
+            self.cargar()
     # ---------------------------------------------
 
     def cargar(self):
+        if self._cargado:
+            return
+
         if os.path.exists(self.archivo):
             with open(
                 self.archivo,
@@ -22,8 +27,11 @@ class Historial:
                 self.lista = json.load(archivo)
         else:
             self.guardar_archivo()
+
+        self._cargado = True
     # ---------------------------------------------
     def agregar(self, registro):
+        self.cargar()
 
         self.lista.insert(
             0,
@@ -38,6 +46,7 @@ class Historial:
     # ---------------------------------------------
 
     def obtener(self):
+        self.cargar()
 
         return self.lista
 
