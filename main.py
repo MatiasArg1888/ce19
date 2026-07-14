@@ -24,7 +24,7 @@ def main(page: ft.Page):
         try:
             AppStartupService.preparar_estructura_base()
             AppStartupService.intentar_backup_auto()
-            AppStartupService.inicializar_estado()
+            AppStartupService.inicializar_estado(page)
 
             router = Router(page)
             router.root = root

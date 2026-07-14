@@ -40,7 +40,7 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --upgrade flet
+          python -m pip install --upgrade flet flet-audio
 
       - name: Construir version web
         run: |

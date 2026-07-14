@@ -62,10 +62,10 @@ class AppStartupService:
         return False, "No se encontró una función de backup automático compatible"
 
     @staticmethod
-    def inicializar_estado():
-        state.historial = Historial()
-        state.guardados = Guardados()
-        state.carpetas = Carpetas(state.guardados)
+    def inicializar_estado(page=None):
+        state.historial = Historial(page=page)
+        state.guardados = Guardados(page=page)
+        state.carpetas = Carpetas(state.guardados, page=page)
         return state
 
     @staticmethod

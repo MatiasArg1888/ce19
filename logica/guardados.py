@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import flet as ft
 from core.app_state import state
 from core.rutas import ruta_datos
 
@@ -29,13 +30,93 @@ CARPETAS_POR_TIPO = {
 
 
 class Guardados:
+    CLAVE_WEB = "ce19.guardados.v1"
+
     # =======================
     # INIT
     # =======================
-    def __init__(self):
+    def __init__(self, page=None):
         self.archivo = ruta_datos("guardados.json")
         self.lista = []
+        self.page = page
+        self.preferencias_web = self._crear_preferencias_web(page)
         self.cargar()
+        self._cargar_web_si_corresponde()
+
+    def _crear_preferencias_web(self, page):
+        if page is None or not getattr(page, "web", False):
+            return None
+
+        try:
+            preferencias = ft.SharedPreferences()
+            if hasattr(page, "services"):
+                page.services.append(preferencias)
+            else:
+                page.overlay.append(preferencias)
+            return preferencias
+        except Exception:
+            return None
+
+    def _programar_web(self, funcion, *args):
+        if self.page is None or self.preferencias_web is None:
+            return
+
+        try:
+            self.page.run_task(funcion, *args)
+        except Exception:
+            pass
+
+    def _cargar_web_si_corresponde(self):
+        self._programar_web(self._cargar_web)
+
+    async def _cargar_web(self):
+        try:
+            contenido = await self.preferencias_web.get(self.CLAVE_WEB)
+            if not contenido:
+                await self._guardar_web()
+                return
+
+            datos = json.loads(contenido)
+            if not isinstance(datos, list):
+                return
+
+            self.lista = [
+                registro
+                for registro in datos
+                if isinstance(registro, dict)
+            ]
+            hubo_cambios = False
+            siguiente_id = self.generar_id()
+
+            for registro in self.lista:
+                if not isinstance(registro, dict):
+                    continue
+                if "id" not in registro:
+                    registro["id"] = siguiente_id
+                    siguiente_id += 1
+                    hubo_cambios = True
+                if "referencia" not in registro:
+                    registro["referencia"] = ""
+                    hubo_cambios = True
+                hubo_cambios = self.normalizar_registro(registro) or hubo_cambios
+
+            if hubo_cambios:
+                await self._guardar_web()
+
+            state.notify("update")
+        except Exception:
+            pass
+
+    async def _guardar_web(self):
+        try:
+            contenido = json.dumps(
+                self.lista,
+                ensure_ascii=False,
+                default=str,
+            )
+            await self.preferencias_web.set(self.CLAVE_WEB, contenido)
+        except Exception:
+            pass
 
     # =======================
     # CARGAR
@@ -176,28 +257,32 @@ class Guardados:
     # GUARDAR ARCHIVOS
     # =======================
     def guardar_archivo(self):
-
-        carpeta = os.path.dirname(
-            self.archivo
-        )
-        if not os.path.exists(carpeta):
-            os.makedirs(carpeta)
-        temporal = f"{self.archivo}.tmp"
-
-        with open(
-            temporal,
-            "w",
-            encoding="utf-8"
-        ) as archivo:
-            json.dump(
-                self.lista,
-                archivo,
-                indent=4,
-                ensure_ascii=False,
-                default=str,
+        try:
+            carpeta = os.path.dirname(
+                self.archivo
             )
+            if not os.path.exists(carpeta):
+                os.makedirs(carpeta)
+            temporal = f"{self.archivo}.tmp"
 
-        os.replace(temporal, self.archivo)
+            with open(
+                temporal,
+                "w",
+                encoding="utf-8"
+            ) as archivo:
+                json.dump(
+                    self.lista,
+                    archivo,
+                    indent=4,
+                    ensure_ascii=False,
+                    default=str,
+                )
+
+            os.replace(temporal, self.archivo)
+        except OSError:
+            pass
+
+        self._programar_web(self._guardar_web)
     # =======================
     # MOVER REGISTRO
     # =======================
