@@ -4,6 +4,11 @@ from pathlib import Path
 
 import flet as ft
 
+try:
+    import flet_audio as fa
+except Exception:
+    fa = None
+
 # Permite ejecutar main.py desde la raíz del proyecto sin perder imports.
 RAIZ_PROYECTO = Path(__file__).resolve().parents[1]
 if str(RAIZ_PROYECTO) not in sys.path:
@@ -12,6 +17,7 @@ if str(RAIZ_PROYECTO) not in sys.path:
 from ui.tema import DORADO, PURPURA_INICIAL
 
 FONDO_INTRO_PC = "intro_pc.webp"
+INTRO_AUDIO = "santo_santo_intro_loop.mp3"
 APOCALIPSIS_13_18 = (
     "Aqu\u00ed hay sabidur\u00eda. El que tiene entendimiento, cuente el n\u00famero de la bestia, "
     "pues es n\u00famero de hombre. Y su n\u00famero es seiscientos sesenta y seis."
@@ -41,8 +47,25 @@ def construir_intro(page, on_ingresar):
     estado = {
         "listo_para_entrar": False,
         "ingresando": False,
+        "audio_iniciado": False,
+        "audio_intentando": False,
     }
     audio_intro = None
+
+    if fa is not None:
+        try:
+            audio_intro = fa.Audio(
+                src=INTRO_AUDIO,
+                autoplay=True,
+                volume=0.68,
+                release_mode=fa.ReleaseMode.LOOP,
+            )
+            if hasattr(page, "services"):
+                page.services.append(audio_intro)
+            else:
+                page.overlay.append(audio_intro)
+        except Exception:
+            audio_intro = None
 
     titulo_size = 36 if es_movil else 52
     versiculo_titulo_size = 15 if es_movil else 18
