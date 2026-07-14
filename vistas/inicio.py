@@ -384,7 +384,7 @@ class InicioView:
 
         panel_resultado = self._tarjeta_visual(
             ft.Column(
-                expand=True,
+                expand=not es_movil,
                 spacing=12,
                 controls=[
                     ft.Row(
@@ -399,7 +399,7 @@ class InicioView:
                             ft.Icon(ft.Icons.INSIGHTS, color=VIOLETA_IOS, size=22),
                         ],
                     ),
-                    ft.Container(expand=True, content=self.resultado_actual),
+                    ft.Container(expand=not es_movil, content=self.resultado_actual),
                 ],
             ),
             expand=not es_movil,

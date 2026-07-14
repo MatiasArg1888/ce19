@@ -4,6 +4,7 @@ version = "1.0.0"
 description = "CODIGO ESCONDIDO 19"
 dependencies = [
     "flet",
+    "flet-audio",
 ]
 
 [tool.flet]
