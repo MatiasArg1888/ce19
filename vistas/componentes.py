@@ -145,7 +145,6 @@ def tarjeta_resultado(
             padding=15,
             clip_behavior=ft.ClipBehavior.HARD_EDGE,
             content=ft.Column(
-                tight=True,
                 spacing=10,
                 controls=[
                     # -------------------------
