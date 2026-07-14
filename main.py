@@ -1,21 +1,9 @@
 import flet as ft
-import threading
 
 from router import Router
 from services.app_startup_service import AppStartupService
 from ui.intro import construir_intro
 from ui.tema import APP_NAME, PURPURA_INICIAL
-
-
-def _saltar_intro(page):
-    consulta = getattr(page, "query", None) or {}
-
-    try:
-        valor = consulta.get("skip_intro")
-        return str(valor).lower() in {"1", "true", "si", "yes"}
-    except AttributeError:
-        texto = f"{consulta} {getattr(page, 'url', '')}"
-        return "skip_intro=1" in texto or "skip_intro=true" in texto
 
 
 def main(page: ft.Page):
@@ -35,6 +23,7 @@ def main(page: ft.Page):
 
         try:
             AppStartupService.preparar_estructura_base()
+            AppStartupService.intentar_backup_auto()
             AppStartupService.inicializar_estado()
 
             router = Router(page)
@@ -44,11 +33,6 @@ def main(page: ft.Page):
             AppStartupService.crear_navigation_bar(page, router)
             router.iniciar("inicio")
 
-            threading.Thread(
-                target=AppStartupService.intentar_backup_auto,
-                daemon=True,
-            ).start()
-
         except Exception as error:
             AppStartupService.pantalla_error(
                 root,
@@ -57,10 +41,6 @@ def main(page: ft.Page):
             )
 
         page.update()
-
-    if _saltar_intro(page):
-        iniciar_app()
-        return
 
     try:
         intro, iniciar_animacion = construir_intro(page, iniciar_app)

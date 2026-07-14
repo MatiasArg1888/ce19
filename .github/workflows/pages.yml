@@ -44,11 +44,7 @@ jobs:
 
       - name: Construir version web
         run: |
-          flet build web -o build/web/app --base-url /ce19/app/ --yes --no-rich-output --skip-flutter-doctor --cleanup-app --exclude .git .github .venv env build dist dist_windows backups logs storage instalador web_shell __pycache__ "*.pyc" README.md .gitignore datos/exportaciones datos/historial.json datos/guardados.json datos/carpetas.json datos/config_tiempo.json datos/analisis_colores_historial.json datos/historial_referencias_biblia.json datos/favoritos_biblia.json datos/notas_biblia.json datos/resaltados_biblia.json datos/ultima_lectura_biblia.json
-          mkdir -p build/web/assets
-          cp web_shell/index.html build/web/index.html
-          cp assets/intro_pc.webp build/web/assets/intro_pc.webp
-          cp assets/icon.png build/web/assets/icon.png
+          flet build web --base-url /ce19/ --yes --no-rich-output --skip-flutter-doctor --cleanup-app --exclude .git .github .venv env build dist dist_windows backups logs storage instalador __pycache__ "*.pyc" README.md .gitignore datos/exportaciones datos/historial.json datos/guardados.json datos/carpetas.json datos/config_tiempo.json datos/analisis_colores_historial.json datos/historial_referencias_biblia.json datos/favoritos_biblia.json datos/notas_biblia.json datos/resaltados_biblia.json datos/ultima_lectura_biblia.json
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v5

@@ -63,7 +63,7 @@ class AppStartupService:
 
     @staticmethod
     def inicializar_estado():
-        state.historial = Historial(cargar_ahora=False)
+        state.historial = Historial()
         state.guardados = Guardados()
         state.carpetas = Carpetas(state.guardados)
         return state
