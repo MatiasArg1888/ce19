@@ -533,7 +533,6 @@ class InicioView:
         nombre = ft.TextField(
             label="Nombre",
             hint_text="Ej: Apocalipsis 13:18",
-            autofocus=False,
             on_tap_outside=lambda e: ocultar_teclado(self.page, e.control),
         )
 
@@ -548,6 +547,7 @@ class InicioView:
             self.page.update()
 
         def cerrar(e):
+            ocultar_teclado(self.page, nombre)
             dialog.open = False
             self.page.update()
 
@@ -566,6 +566,7 @@ class InicioView:
                 nuevo_registro["carpeta_id"] = 1
 
             self.guardados.guardar(nuevo_registro)
+            NotificacionService.exito(self.page, "Guardado correctamente.")
             self.carpeta_selector_id = destino["id"] if destino else 1
             self.carpeta_selector_nombre = "TARJETAS"
             self.carpeta_selector_ruta = "TARJETAS"
@@ -575,7 +576,6 @@ class InicioView:
 
             dialog.open = False
             self.page.update()
-            NotificacionService.exito(self.page, "Guardado correctamente.")
 
             self.resultado_actual.controls.clear()
             self.page.update()
@@ -601,12 +601,14 @@ class InicioView:
         )
 
         dialog = ft.AlertDialog(
+            modal=True,
             title=ft.Text("Guardar resultado"),
             content=ft.Container(
                 width=320 if es_movil else 420,
                 content=ft.Column(
                     tight=True,
                     spacing=10,
+                    scroll=ft.ScrollMode.AUTO if es_movil else None,
                     controls=[
                         ft.Text(registro["palabra"], no_wrap=False),
                         nombre,
