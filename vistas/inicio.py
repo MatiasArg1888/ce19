@@ -1,8 +1,8 @@
 from ui.responsive import Responsive
 from ui.responsive_layout import ResponsiveLayout
-import threading
 import flet as ft
 from services.codificador_service import CodificadorService
+from services.notificacion_service import NotificacionService
 from vistas.componentes import tarjeta_resultado
 from ui.sidebar import AppSidebar
 from ui.compartir import compartir_texto
@@ -384,7 +384,7 @@ class InicioView:
 
         panel_resultado = self._tarjeta_visual(
             ft.Column(
-                expand=True,
+                expand=not es_movil,
                 spacing=12,
                 controls=[
                     ft.Row(
@@ -399,7 +399,7 @@ class InicioView:
                             ft.Icon(ft.Icons.INSIGHTS, color=VIOLETA_IOS, size=22),
                         ],
                     ),
-                    ft.Container(expand=True, content=self.resultado_actual),
+                    ft.Container(expand=not es_movil, content=self.resultado_actual),
                 ],
             ),
             expand=not es_movil,
@@ -514,6 +514,7 @@ class InicioView:
     # CONFIRMAR GUARDADO
     # =====================================================
     def confirmar_guardado(self, registro):
+        es_movil = self.responsive.is_mobile()
         destino = self.carpetas.obtener_por_nombre("TARJETAS")
         self.carpeta_selector_id = destino["id"] if destino else 1
         self.carpeta_selector_nombre = "TARJETAS"
@@ -532,14 +533,16 @@ class InicioView:
         nombre = ft.TextField(
             label="Nombre",
             hint_text="Ej: Apocalipsis 13:18",
+            autofocus=False,
             on_tap_outside=lambda e: ocultar_teclado(self.page, e.control),
         )
+        guardando = {"valor": False}
 
         def abrir_selector():
             arbol = self.crear_selector_arbol()
             self.dialog_selector.content = ft.Container(
                 width=320 if self.responsive.is_mobile() else 350,
-                height=420 if self.responsive.is_mobile() else 450,
+                height=280 if self.responsive.is_mobile() else 450,
                 content=arbol,
             )
             self.dialog_selector.open = True
@@ -550,40 +553,38 @@ class InicioView:
             self.page.update()
 
         def guardar(e):
-            ocultar_teclado(self.page, nombre)
+            if guardando["valor"]:
+                return
+
+            guardando["valor"] = True
             nuevo_registro = registro.copy()
             nuevo_registro["nombre"] = nombre.value
             nuevo_registro["tipo"] = "tarjeta"
             carpeta_destino = self.carpetas.obtener_por_id(self.carpeta_selector_id) or destino
 
-            if carpeta_destino:
-                nuevo_registro["carpeta"] = carpeta_destino["nombre"]
-                nuevo_registro["carpeta_id"] = carpeta_destino["id"]
-            else:
-                nuevo_registro["carpeta"] = "TARJETAS"
-                nuevo_registro["carpeta_id"] = 1
+            try:
+                if carpeta_destino:
+                    nuevo_registro["carpeta"] = carpeta_destino["nombre"]
+                    nuevo_registro["carpeta_id"] = carpeta_destino["id"]
+                else:
+                    nuevo_registro["carpeta"] = "TARJETAS"
+                    nuevo_registro["carpeta_id"] = 1
 
-            self.guardados.guardar(nuevo_registro)
-            self.carpeta_selector_id = destino["id"] if destino else 1
-            self.carpeta_selector_nombre = "TARJETAS"
-            self.carpeta_selector_ruta = "TARJETAS"
-            self.selector_carpeta.value = "TARJETAS"
-            self.selector_raiz_id = destino["id"] if destino else 1
-            self.selector_expandidas.clear()
+                self.guardados.guardar(nuevo_registro)
+                self.carpeta_selector_id = destino["id"] if destino else 1
+                self.carpeta_selector_nombre = "TARJETAS"
+                self.carpeta_selector_ruta = "TARJETAS"
+                self.selector_carpeta.value = "TARJETAS"
+                self.selector_raiz_id = destino["id"] if destino else 1
+                self.selector_expandidas.clear()
 
-            dialog.open = False
-            self.page.update()
-
-            def mostrar_mensaje():
-                self.mensaje_exito.value = "El archivo se ha enviado correctamente."
-                self.mensaje_exito.visible = True
+                dialog.open = False
+                self.resultado_actual.controls.clear()
                 self.page.update()
-
-            threading.Timer(3.0, self.ocultar_mensaje_exito).start()
-            threading.Timer(0.1, mostrar_mensaje).start()
-
-            self.resultado_actual.controls.clear()
-            self.page.update()
+                NotificacionService.exito(self.page, "Guardado correctamente.")
+            except Exception as error:
+                guardando["valor"] = False
+                NotificacionService.error(self.page, f"No se pudo guardar: {error}")
 
         nombre.on_submit = guardar
 
@@ -607,25 +608,30 @@ class InicioView:
 
         dialog = ft.AlertDialog(
             title=ft.Text("Guardar resultado"),
-            content=ft.Column(
-                tight=True,
-                controls=[
-                    ft.Text(registro["palabra"]),
-                    nombre,
-                    ft.Row(
-                        spacing=8,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        controls=[
-                            self.selector_carpeta,
-                            ft.IconButton(
-                                icon=ft.Icons.FOLDER_OPEN,
-                                tooltip="Elegir carpeta",
-                                on_click=lambda e: abrir_selector(),
-                            ),
-                        ],
-                    ),
-                ],
+            content=ft.Container(
+                width=320 if es_movil else 420,
+                content=ft.Column(
+                    tight=True,
+                    spacing=10,
+                    controls=[
+                        ft.Text(registro["palabra"], no_wrap=False),
+                        nombre,
+                        ft.Row(
+                            spacing=8,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                self.selector_carpeta,
+                                ft.IconButton(
+                                    icon=ft.Icons.FOLDER_OPEN,
+                                    tooltip="Elegir carpeta",
+                                    on_click=lambda e: abrir_selector(),
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
             ),
+            actions_alignment=ft.MainAxisAlignment.END,
             actions=[
                 ft.TextButton("Cancelar", on_click=cerrar),
                 ft.ElevatedButton("Guardar", on_click=guardar),

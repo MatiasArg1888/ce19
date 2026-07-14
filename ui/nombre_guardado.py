@@ -3,6 +3,34 @@ import flet as ft
 from ui.teclado import ocultar_teclado
 
 
+def _ancho_disponible(page):
+    ancho = getattr(page, "width", None)
+    if ancho is None and hasattr(page, "window"):
+        ancho = getattr(page.window, "width", None)
+    return ancho or 420
+
+
+def _es_movil(page):
+    return _ancho_disponible(page) < 560
+
+
+def _ancho_dialogo(page):
+    return min(420, max(280, _ancho_disponible(page) - 44))
+
+
+def _mostrar_error(page, mensaje):
+    try:
+        page.snack_bar = ft.SnackBar(
+            content=ft.Text(str(mensaje)),
+            bgcolor=ft.Colors.RED_700,
+            duration=2500,
+        )
+        page.snack_bar.open = True
+        page.update()
+    except Exception:
+        pass
+
+
 def pedir_nombre_guardado(
     page,
     titulo,
@@ -13,19 +41,27 @@ def pedir_nombre_guardado(
     campo = ft.TextField(
         label="Nombre",
         value=valor_sugerido or "",
-        autofocus=True,
+        autofocus=False,
         on_tap_outside=lambda e: ocultar_teclado(page, e.control),
     )
+    guardando = {"valor": False}
 
     def cerrar(e=None):
-        ocultar_teclado(page, campo)
         dialog.open = False
         page.update()
 
     def confirmar(e=None):
+        if guardando["valor"]:
+            return
+
+        guardando["valor"] = True
         nombre = (campo.value or valor_sugerido or "Guardado").strip()
-        cerrar()
-        on_guardar(nombre)
+        try:
+            on_guardar(nombre)
+            cerrar()
+        except Exception as error:
+            guardando["valor"] = False
+            _mostrar_error(page, f"No se pudo guardar: {error}")
 
     campo.on_submit = confirmar
 
@@ -38,11 +74,15 @@ def pedir_nombre_guardado(
 
     dialog = ft.AlertDialog(
         title=ft.Text(titulo),
-        content=ft.Column(
-            tight=True,
-            spacing=10,
-            controls=controles,
+        content=ft.Container(
+            width=_ancho_dialogo(page),
+            content=ft.Column(
+                tight=True,
+                spacing=10,
+                controls=controles,
+            ),
         ),
+        actions_alignment=ft.MainAxisAlignment.END,
         actions=[
             ft.TextButton("Cancelar", on_click=cerrar),
             ft.ElevatedButton("Guardar", on_click=confirmar),
@@ -70,7 +110,7 @@ def pedir_nombre_y_carpeta_guardado(
     campo = ft.TextField(
         label="Nombre",
         value=valor_sugerido or "",
-        autofocus=True,
+        autofocus=False,
         on_tap_outside=lambda e: ocultar_teclado(page, e.control),
     )
     destino = ft.Text(
@@ -79,10 +119,11 @@ def pedir_nombre_y_carpeta_guardado(
         color=ft.Colors.GREY_700,
     )
     lista = ft.ListView(
-        height=240,
+        height=130 if _es_movil(page) else 240,
         spacing=2,
         auto_scroll=False,
     )
+    guardando = {"valor": False}
 
     def ruta_destino():
         carpeta = carpeta_seleccionada["valor"]
@@ -184,15 +225,22 @@ def pedir_nombre_y_carpeta_guardado(
             pass
 
     def cerrar(e=None):
-        ocultar_teclado(page, campo)
         dialog.open = False
         page.update()
 
     def confirmar(e=None):
+        if guardando["valor"]:
+            return
+
+        guardando["valor"] = True
         nombre = (campo.value or valor_sugerido or "Guardado").strip()
         carpeta = carpeta_seleccionada["valor"] or raiz
-        cerrar()
-        on_guardar(nombre, carpeta)
+        try:
+            on_guardar(nombre, carpeta)
+            cerrar()
+        except Exception as error:
+            guardando["valor"] = False
+            _mostrar_error(page, f"No se pudo guardar: {error}")
 
     campo.on_submit = confirmar
     controles = []
@@ -216,13 +264,14 @@ def pedir_nombre_y_carpeta_guardado(
     dialog = ft.AlertDialog(
         title=ft.Text(titulo),
         content=ft.Container(
-            width=420,
+            width=_ancho_dialogo(page),
             content=ft.Column(
                 tight=True,
                 spacing=10,
                 controls=controles,
             ),
         ),
+        actions_alignment=ft.MainAxisAlignment.END,
         actions=[
             ft.TextButton("Cancelar", on_click=cerrar),
             ft.ElevatedButton("Guardar", on_click=confirmar),

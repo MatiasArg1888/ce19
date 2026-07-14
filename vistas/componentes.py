@@ -77,11 +77,65 @@ def tarjeta_resultado(
 
     # ----------------------------------------------------
 
+    ancho = getattr(page, "width", None)
+    if ancho is None and hasattr(page, "window"):
+        ancho = getattr(page.window, "width", None)
+    es_movil = (ancho or 1200) < 560
+
+    boton_detalle = ft.OutlinedButton(
+        "Ver detalle",
+        icon=ft.Icons.VISIBILITY,
+        on_click=ver_detalle,
+        expand=es_movil,
+    )
+    boton_compartir = (
+        ft.OutlinedButton(
+            "Compartir",
+            icon=ft.Icons.SHARE,
+            on_click=funcion_compartir,
+            expand=es_movil,
+        )
+        if funcion_compartir
+        else None
+    )
+    boton_guardar = ft.ElevatedButton(
+        texto_boton,
+        icon=ft.Icons.SAVE,
+        on_click=funcion,
+        expand=es_movil,
+    )
+
+    if es_movil:
+        fila_primaria = [boton_detalle]
+        if boton_compartir:
+            fila_primaria.append(boton_compartir)
+        botones_accion = ft.Column(
+            tight=True,
+            spacing=8,
+            controls=[
+                ft.Row(spacing=8, controls=fila_primaria),
+                ft.Row(controls=[boton_guardar]),
+            ],
+        )
+    else:
+        botones = [boton_detalle]
+        if boton_compartir:
+            botones.append(boton_compartir)
+        botones.append(boton_guardar)
+        botones_accion = ft.Row(
+            spacing=8,
+            wrap=True,
+            run_spacing=8,
+            alignment=ft.MainAxisAlignment.START,
+            controls=botones,
+        )
+
     return ft.Card(
         elevation=4,
         content=ft.Container(
             padding=15,
             content=ft.Column(
+                tight=True,
                 spacing=10,
                 controls=[
                     # -------------------------
@@ -135,35 +189,7 @@ def tarjeta_resultado(
                     # Botones
                     # -------------------------
 
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        controls=[
-                            ft.OutlinedButton(
-                                "Ver detalle",
-                                icon=ft.Icons.VISIBILITY,
-                                on_click=ver_detalle,
-                            ),
-
-                            *(
-                                [
-                                    ft.OutlinedButton(
-                                        "Compartir",
-                                        icon=ft.Icons.SHARE,
-                                        on_click=funcion_compartir,
-                                    )
-                                ]
-                                if funcion_compartir
-                                else []
-                            ),
-
-                            ft.ElevatedButton(
-                                texto_boton,
-                                on_click=funcion,
-                            ),
-
-                        ],
-
-                    ),
+                    botones_accion,
 
                 ],
 
