@@ -1,6 +1,5 @@
 import asyncio
 import sys
-import unicodedata
 from pathlib import Path
 
 import flet as ft
@@ -10,7 +9,6 @@ RAIZ_PROYECTO = Path(__file__).resolve().parents[1]
 if str(RAIZ_PROYECTO) not in sys.path:
     sys.path.insert(0, str(RAIZ_PROYECTO))
 
-from logica.biblia import cargar_biblia
 from ui.tema import DORADO, PURPURA_INICIAL
 
 try:
@@ -21,27 +19,14 @@ except Exception:
 
 FONDO_INTRO_PC = "intro_pc.png"
 INTRO_AUDIO = "santo_santo_intro_loop.mp3"
-
-
-def _normalizar(texto):
-    limpio = unicodedata.normalize("NFD", texto or "")
-    limpio = "".join(c for c in limpio if unicodedata.category(c) != "Mn")
-    return limpio.upper()
-
-
-def _obtener_versiculo(libros, libro_buscado, capitulo, versiculo):
-    buscado = _normalizar(libro_buscado)
-
-    for libro in libros:
-        if _normalizar(libro.get("nombre")) != buscado:
-            continue
-
-        try:
-            return libro["capitulos"][capitulo - 1][versiculo - 1]
-        except (IndexError, KeyError, TypeError):
-            return ""
-
-    return ""
+APOCALIPSIS_13_18 = (
+    "Aqu\u00ed hay sabidur\u00eda. El que tiene entendimiento, cuente el n\u00famero de la bestia, "
+    "pues es n\u00famero de hombre. Y su n\u00famero es seiscientos sesenta y seis."
+)
+ROMANOS_10_9 = (
+    "que si confesares con tu boca que Jes\u00fas es el Se\u00f1or, y creyeres en tu coraz\u00f3n "
+    "que Dios le levant\u00f3 de los muertos, ser\u00e1s salvo."
+)
 
 
 def _seguro_update(control):
@@ -57,9 +42,8 @@ def construir_intro(page, on_ingresar):
     alto = getattr(page, "height", None) or getattr(ventana, "height", None) or 720
     es_movil = ancho < 700
 
-    libros = cargar_biblia()
-    apocalipsis = _obtener_versiculo(libros, "Apocalipsis", 13, 18)
-    romanos = _obtener_versiculo(libros, "Romanos", 10, 9)
+    apocalipsis = APOCALIPSIS_13_18
+    romanos = ROMANOS_10_9
 
     estado = {
         "listo_para_entrar": False,

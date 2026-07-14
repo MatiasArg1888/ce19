@@ -55,15 +55,22 @@ class Guardados:
                 self.guardar_archivo()
                 return
 
+            hubo_cambios = False
+            siguiente_id = self.generar_id()
+
             # Compatibilidad con registros antiguos
             for registro in self.lista:
                 if "referencia" not in registro:
                     registro["referencia"] = ""
+                    hubo_cambios = True
                 if "id" not in registro:
-                    registro["id"] = self.generar_id()
-                self.normalizar_registro(registro)
+                    registro["id"] = siguiente_id
+                    siguiente_id += 1
+                    hubo_cambios = True
+                hubo_cambios = self.normalizar_registro(registro) or hubo_cambios
 
-            self.guardar_archivo()
+            if hubo_cambios:
+                self.guardar_archivo()
         else:
             self.guardar_archivo()
 
@@ -111,6 +118,10 @@ class Guardados:
         state.notify('update')
 
     def normalizar_registro(self, registro):
+        tipo_original = registro.get("tipo")
+        carpeta_original = registro.get("carpeta")
+        carpeta_id_original = registro.get("carpeta_id")
+
         tipo = registro.get("tipo")
 
         if tipo not in CARPETAS_POR_TIPO:
@@ -124,6 +135,12 @@ class Guardados:
 
         if not registro.get("carpeta_id") and registro["carpeta"] in CARPETAS_VALIDAS:
             registro["carpeta_id"] = carpeta_id
+
+        return (
+            tipo_original != registro.get("tipo")
+            or carpeta_original != registro.get("carpeta")
+            or carpeta_id_original != registro.get("carpeta_id")
+        )
     # =======================
     # ELIMINAR
     # =======================

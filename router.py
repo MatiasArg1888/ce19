@@ -37,6 +37,7 @@ class Router:
     def __init__(self, page):
         self.page = page
         self.vistas = {}
+        self.fabricas_vistas = {}
         self.root = None
         self.ruta_actual = None
         self._refrescando = False
@@ -45,6 +46,22 @@ class Router:
 
     def registrar(self, nombre, vista):
         self.vistas[nombre] = vista
+        self.fabricas_vistas.pop(nombre, None)
+
+    def registrar_lazy(self, nombre, fabrica):
+        self.vistas[nombre] = None
+        self.fabricas_vistas[nombre] = fabrica
+
+    def _obtener_vista_registrada(self, ruta):
+        if ruta not in self.vistas:
+            return None
+
+        vista = self.vistas.get(ruta)
+        if vista is None and ruta in self.fabricas_vistas:
+            vista = self.fabricas_vistas[ruta]()
+            self.vistas[ruta] = vista
+
+        return vista
 
     @property
     def activo(self):
@@ -52,9 +69,15 @@ class Router:
 
     def iniciar(self, ruta):
         self.ruta_actual = ruta
-        if ruta in self.vistas and hasattr(self.vistas[ruta], "on_enter"):
+        vista = None
+        try:
+            vista = self._obtener_vista_registrada(ruta)
+        except Exception as error:
+            registrar_error("Router.iniciar.crear_vista", error, f"ruta={ruta}")
+
+        if vista is not None and hasattr(vista, "on_enter"):
             try:
-                self.vistas[ruta].on_enter()
+                vista.on_enter()
             except Exception as error:
                 registrar_error("Router.iniciar", error, f"ruta={ruta}")
         self.cargar_vista(ruta)
@@ -66,9 +89,15 @@ class Router:
         if self.page.navigation_bar and ruta in self.orden_rutas:
             self.page.navigation_bar.selected_index = self.orden_rutas.index(ruta)
 
-        if ruta != ruta_anterior and ruta in self.vistas and hasattr(self.vistas[ruta], "on_enter"):
+        vista = None
+        try:
+            vista = self._obtener_vista_registrada(ruta)
+        except Exception as error:
+            registrar_error("Router.navegar.crear_vista", error, f"ruta={ruta}")
+
+        if ruta != ruta_anterior and vista is not None and hasattr(vista, "on_enter"):
             try:
-                self.vistas[ruta].on_enter()
+                vista.on_enter()
             except Exception as error:
                 registrar_error("Router.navegar.on_enter", error, f"ruta={ruta}")
 
@@ -81,7 +110,10 @@ class Router:
             return
 
         try:
-            contenido = self.vistas[ruta].obtener_vista()
+            vista = self._obtener_vista_registrada(ruta)
+            if vista is None:
+                raise RuntimeError(f"No existe una vista registrada con el nombre: {ruta}")
+            contenido = vista.obtener_vista()
         except Exception as error:
             registrar_error("Router.cargar_vista", error, f"ruta={ruta}")
             contenido = self._vista_error("La vista no pudo cargarse", f"{error}\n\nSe guardó el detalle en: {ruta_log()}")

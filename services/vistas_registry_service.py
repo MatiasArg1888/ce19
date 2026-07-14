@@ -8,26 +8,47 @@ que se registran en el router.
 class VistasRegistryService:
     @staticmethod
     def registrar_todas(router, page):
-        # Imports internos para no cargar vistas hasta que la app ya este iniciando.
-        from vistas.analizador_colores import AnalizadorColoresView
-        from vistas.biblia import BibliaView
-        from vistas.calculadora import CalculadoraView
-        from vistas.guardados import GuardadosView
-        from vistas.inicio import InicioView
-        from vistas.pizarra import PizarraView
-        from vistas.tiempo import TiempoView
+        # Cada vista se importa y se crea solo cuando el usuario la abre.
+        # Esto evita que Biblia, Pizarra y Guardados hagan pesado el arranque.
+        def crear_inicio():
+            from vistas.inicio import InicioView
+            return InicioView(page, router)
 
-        vistas = {
-            "inicio": InicioView(page, router),
-            "pizarra": PizarraView(page, router),
-            "colores": AnalizadorColoresView(page, router),
-            "biblia": BibliaView(page, router),
-            "tiempo": TiempoView(page, router),
-            "calculadora": CalculadoraView(page, router),
-            "guardados": GuardadosView(page, router),
+        def crear_pizarra():
+            from vistas.pizarra import PizarraView
+            return PizarraView(page, router)
+
+        def crear_colores():
+            from vistas.analizador_colores import AnalizadorColoresView
+            return AnalizadorColoresView(page, router)
+
+        def crear_biblia():
+            from vistas.biblia import BibliaView
+            return BibliaView(page, router)
+
+        def crear_tiempo():
+            from vistas.tiempo import TiempoView
+            return TiempoView(page, router)
+
+        def crear_calculadora():
+            from vistas.calculadora import CalculadoraView
+            return CalculadoraView(page, router)
+
+        def crear_guardados():
+            from vistas.guardados import GuardadosView
+            return GuardadosView(page, router)
+
+        fabricas = {
+            "inicio": crear_inicio,
+            "pizarra": crear_pizarra,
+            "colores": crear_colores,
+            "biblia": crear_biblia,
+            "tiempo": crear_tiempo,
+            "calculadora": crear_calculadora,
+            "guardados": crear_guardados,
         }
 
-        for ruta, vista in vistas.items():
-            router.registrar(ruta, vista)
+        for ruta, fabrica in fabricas.items():
+            router.registrar_lazy(ruta, fabrica)
 
-        return vistas
+        return fabricas

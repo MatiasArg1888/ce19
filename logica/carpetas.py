@@ -61,6 +61,8 @@ class Carpetas:
         else:
             self.lista = []
 
+        hubo_cambios = False
+        orden_original = [carpeta.get("id") for carpeta in self.lista]
         por_id = {
             carpeta.get("id"): carpeta
             for carpeta in self.lista
@@ -68,13 +70,23 @@ class Carpetas:
 
         for fija in CARPETAS_FIJAS:
             if fija["id"] in por_id:
-                por_id[fija["id"]]["nombre"] = fija["nombre"]
-                por_id[fija["id"]]["padre"] = None
+                carpeta = por_id[fija["id"]]
+                if carpeta.get("nombre") != fija["nombre"]:
+                    carpeta["nombre"] = fija["nombre"]
+                    hubo_cambios = True
+                if carpeta.get("padre") is not None:
+                    carpeta["padre"] = None
+                    hubo_cambios = True
             else:
                 self.lista.append(fija.copy())
+                hubo_cambios = True
 
         self.lista.sort(key=lambda carpeta: carpeta.get("id", 0))
-        self.guardar()
+        if orden_original != [carpeta.get("id") for carpeta in self.lista]:
+            hubo_cambios = True
+
+        if hubo_cambios:
+            self.guardar()
 
     # -----------------------------------------
     def guardar(self):
