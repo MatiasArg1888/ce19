@@ -1521,6 +1521,15 @@ class GuardadosView:
 
         return str(registro.get("resultado", ""))
 
+    def texto_previsualizacion(self, registro, size=13, max_lines=2, color=None):
+        return ft.Text(
+            self.subtitulo_registro(registro),
+            size=size,
+            color=color,
+            max_lines=max_lines,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+
     def icono_registro(self, registro, grande=False):
         tipo = registro.get("tipo", "tarjeta")
 
@@ -3088,6 +3097,7 @@ class GuardadosView:
                 content=ft.Container(
 
                     padding=15,
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
 
                     bgcolor=(
 
@@ -3145,14 +3155,22 @@ class GuardadosView:
                                                 registro,
                                                 ft.Row(
                                                     spacing=8,
+                                                    expand=True,
                                                     controls=[
-                                                        self.icono_registro(registro),
-                                                        ft.Text(
-                                                            self.titulo_registro(registro),
-                                                            size=20,
-                                                            weight=ft.FontWeight.BOLD,
-                                                            max_lines=1,
-                                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                                        ft.Container(
+                                                            width=46,
+                                                            alignment=ft.Alignment(0, 0),
+                                                            content=self.icono_registro(registro),
+                                                        ),
+                                                        ft.Container(
+                                                            expand=True,
+                                                            content=ft.Text(
+                                                                self.titulo_registro(registro),
+                                                                size=20,
+                                                                weight=ft.FontWeight.BOLD,
+                                                                max_lines=1,
+                                                                overflow=ft.TextOverflow.ELLIPSIS,
+                                                            ),
                                                         ),
                                                     ],
                                                 ),
@@ -3175,9 +3193,10 @@ class GuardadosView:
                                     spacing=10,
                                     controls=[
                                         self.preview_registro(registro),
-                                        ft.Text(
-                                            self.subtitulo_registro(registro),
+                                        self.texto_previsualizacion(
+                                            registro,
                                             size=14,
+                                            max_lines=4,
                                         ),
                                         ft.Text(
                                             f'Resultado: {self.resultado_registro(registro)}',
@@ -3217,6 +3236,7 @@ class GuardadosView:
                     height=220,
 
                     padding=15,
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
 
                     bgcolor=(
                         PERLA_VIOLETA
@@ -3273,9 +3293,10 @@ class GuardadosView:
                                             max_lines=2,
                                             overflow=ft.TextOverflow.ELLIPSIS,
                                         ),
-                                        ft.Text(
-                                            self.subtitulo_registro(registro),
+                                        self.texto_previsualizacion(
+                                            registro,
                                             size=13,
+                                            max_lines=4,
                                         ),
                                         ft.Text(
                                             f'Resultado: {self.resultado_registro(registro)}',
@@ -3326,6 +3347,7 @@ class GuardadosView:
                 ft.Container(
                     padding=8,
                     border_radius=6,
+                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
                     bgcolor=(
                         PERLA_VIOLETA
                         if (
@@ -3350,9 +3372,14 @@ class GuardadosView:
                                     registro,
                                     ft.Row(
                                         spacing=12,
+                                        expand=True,
                                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                                         controls=[
-                                            self.icono_registro(registro),
+                                            ft.Container(
+                                                width=46,
+                                                alignment=ft.Alignment(0, 0),
+                                                content=self.icono_registro(registro),
+                                            ),
                                             ft.Container(
                                                 expand=True,
                                                 content=ft.Column(
@@ -3365,18 +3392,26 @@ class GuardadosView:
                                                             max_lines=1,
                                                             overflow=ft.TextOverflow.ELLIPSIS,
                                                         ),
-                                                        ft.Text(
-                                                            self.subtitulo_registro(registro),
+                                                        self.texto_previsualizacion(
+                                                            registro,
                                                             size=13,
+                                                            max_lines=2,
                                                             color=ft.Colors.GREY_700,
                                                         ),
                                                     ],
                                                 ),
                                             ),
-                                            ft.Text(
-                                                self.resultado_registro(registro),
-                                                size=16,
-                                                weight=ft.FontWeight.BOLD,
+                                            ft.Container(
+                                                width=86,
+                                                alignment=ft.Alignment(1, 0),
+                                                content=ft.Text(
+                                                    self.resultado_registro(registro),
+                                                    size=15,
+                                                    weight=ft.FontWeight.BOLD,
+                                                    max_lines=1,
+                                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                                    text_align=ft.TextAlign.RIGHT,
+                                                ),
                                             ),
                                         ],
                                     ),
