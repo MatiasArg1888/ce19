@@ -1,11 +1,12 @@
 import json
+import gzip
 import os
 import re
 import unicodedata
 
 from core.rutas import ruta_datos, ruta_recurso
 
-BIBLIA_ARCHIVO = ruta_recurso("datos/biblia_rvr1960.json")
+BIBLIA_ARCHIVO = ruta_recurso("datos/biblia_rvr1960.json.gz")
 RESALTADOS_ARCHIVO = ruta_datos("resaltados_biblia.json")
 UNIDADES = {
     0: "cero",
@@ -146,10 +147,18 @@ def normalizar_versiculo(texto):
 
 def cargar_biblia(archivo=BIBLIA_ARCHIVO):
     if not os.path.exists(archivo):
-        return []
+        archivo_json = ruta_recurso("datos/biblia_rvr1960.json")
+        if os.path.exists(archivo_json):
+            archivo = archivo_json
+        else:
+            return []
 
-    with open(archivo, "r", encoding="utf-8") as entrada:
-        datos = json.load(entrada)
+    if str(archivo).lower().endswith(".gz"):
+        with gzip.open(archivo, "rt", encoding="utf-8") as entrada:
+            datos = json.load(entrada)
+    else:
+        with open(archivo, "r", encoding="utf-8") as entrada:
+            datos = json.load(entrada)
 
     if isinstance(datos, dict):
         datos = datos.get("libros", [])
@@ -175,7 +184,6 @@ def cargar_biblia(archivo=BIBLIA_ARCHIVO):
             )
 
     return libros
-
 
 def cargar_resaltados(archivo=RESALTADOS_ARCHIVO):
     if not os.path.exists(archivo):

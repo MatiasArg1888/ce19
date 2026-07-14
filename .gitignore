@@ -30,7 +30,7 @@ storage/
 camino1_refactor_base/
 camino1_servicios_extra/
 datos/*
-!datos/biblia_rvr1960.json
+!datos/biblia_rvr1960.json.gz
 !datos/biblia_rvr1960.formato.json
 !datos/.gitkeep
 
