@@ -175,14 +175,6 @@ DICCIONARIO_HEBREO.extend(
             "aliases": ["Elohim"],
         },
         {
-            "palabra": "El",
-            "hebreo": "\u05d0\u05dc",
-            "transliteracion": "El",
-            "significado": "Dios; poderoso.",
-            "descripcion": "Nombre o titulo divino que aparece tambien dentro de muchos nombres biblicos.",
-            "aliases": ["El"],
-        },
-        {
             "palabra": "Adonai",
             "hebreo": "\u05d0\u05d3\u05e0\u05d9",
             "transliteracion": "Adonai",
