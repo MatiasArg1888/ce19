@@ -2,13 +2,17 @@ import flet as ft
 import base64
 import json
 import math
+import os
+import time
 from pathlib import Path
 from vistas.detalle import mostrar_detalle
 from core.app_state import state
+from core.rutas import ruta_exportacion
 from services.mantenimiento_service import MantenimientoService
 
 from logica.exportar_excel import exportar_guardados_xlsx
 from logica.pizarra_imagen import renderizar_lienzo_exportable_base64
+from logica.tarjeta_biblica import datos_tarjeta_versiculo
 from ui.clipboard import copiar_al_portapapeles
 from ui.compartir import compartir_archivo, compartir_texto
 from ui.tareas import ejecutar_demorado
@@ -47,6 +51,7 @@ class GuardadosView:
         self.modo_cuadricula = False
         self.modo_seleccion_multiple = False
         self.file_picker_excel = None
+        self.file_picker_tarjeta = None
         
         self.carpeta_actual_id = 1
         self.carpeta_actual_nombre = "TARJETAS"
@@ -997,6 +1002,11 @@ class GuardadosView:
 
         def cerrar(e=None):
             dialog.open = False
+            try:
+                if dialog in self.page.overlay:
+                    self.page.overlay.remove(dialog)
+            except Exception:
+                pass
             self.page.update()
 
         def actualizar_check(e):
@@ -1562,6 +1572,23 @@ class GuardadosView:
                 ),
             )
 
+        if tipo == "fragmento_biblico" and registro.get("subtipo") == "tarjeta_versiculo":
+            ancho = 52 if grande else 42
+            alto = 34 if grande else 28
+            return ft.Container(
+                width=ancho,
+                height=alto,
+                border_radius=5,
+                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                border=ft.Border.all(1, "#D7A934"),
+                content=ft.Image(
+                    src="tarjeta_versiculo_base.png",
+                    width=ancho,
+                    height=alto,
+                    fit=ft.BoxFit.COVER,
+                ),
+            )
+
         if tipo == "fragmento_biblico":
             return ft.Container(
                 width=48 if grande else 38,
@@ -1627,6 +1654,208 @@ class GuardadosView:
             "extension": registro.get("imagen_extension", "jpg"),
         }
 
+    def datos_imagen_registro(self, registro):
+        if registro.get("tipo") == "pizarra":
+            return self.datos_imagen_pizarra(registro)
+
+        if registro.get("subtipo") == "tarjeta_versiculo":
+            archivo_actual = Path(registro.get("imagen_archivo") or "")
+
+            if archivo_actual.exists() and archivo_actual.suffix.lower() in (".jpg", ".jpeg"):
+                return {
+                    "archivo": str(archivo_actual),
+                    "mime": "image/jpeg",
+                    "extension": "jpg",
+                }
+
+            referencia = registro.get("referencia") or registro.get("nombre") or "Versiculo"
+            texto = registro.get("contenido") or registro.get("suma") or ""
+
+            if texto:
+                try:
+                    imagen = datos_tarjeta_versiculo(referencia, texto)
+                    registro["imagen_archivo"] = imagen["archivo"]
+                    registro["imagen_mime"] = imagen["mime"]
+                    registro["imagen_extension"] = imagen["extension"]
+                    return imagen
+                except Exception:
+                    pass
+
+        archivo = registro.get("imagen_archivo")
+
+        if archivo and Path(archivo).exists():
+            return {
+                "archivo": str(archivo),
+                "mime": registro.get("imagen_mime", "image/jpeg"),
+                "extension": registro.get("imagen_extension", "jpg"),
+            }
+
+        if registro.get("imagen_base64"):
+            return {
+                "base64": registro.get("imagen_base64"),
+                "mime": registro.get("imagen_mime", "image/jpeg"),
+                "extension": registro.get("imagen_extension", "jpg"),
+            }
+
+        return None
+
+    def _nombre_archivo_imagen(self, registro, extension):
+        base = self.titulo_registro(registro)
+        limpio = "".join(
+            caracter if caracter.isalnum() else "_"
+            for caracter in str(base)
+        ).strip("_")
+        return f"{limpio or 'imagen_guardada'}.{extension or 'jpg'}"
+
+    def archivo_imagen_registro(self, registro):
+        imagen = self.datos_imagen_registro(registro)
+
+        if not imagen:
+            return None
+
+        archivo_existente = imagen.get("archivo")
+
+        if archivo_existente and Path(archivo_existente).exists():
+            return {
+                "archivo": str(archivo_existente),
+                "mime": imagen.get("mime", "image/jpeg"),
+            }
+
+        if not imagen.get("base64"):
+            return None
+
+        extension = (imagen.get("extension") or "jpg").lstrip(".")
+        nombre = self._nombre_archivo_imagen(registro, extension)
+        archivo = Path(ruta_exportacion(nombre))
+        archivo.parent.mkdir(parents=True, exist_ok=True)
+        archivo.write_bytes(base64.b64decode(imagen["base64"]))
+
+        return {
+            "archivo": str(archivo),
+            "mime": imagen.get("mime", "image/jpeg"),
+        }
+
+    def src_imagen_registro(self, imagen):
+        if not imagen:
+            return None
+
+        mime = imagen.get("mime", "image/png")
+        archivo = imagen.get("archivo")
+
+        if archivo:
+            try:
+                datos = base64.b64encode(Path(archivo).read_bytes()).decode("ascii")
+                return f"data:{mime};base64,{datos}"
+            except Exception:
+                pass
+
+        base64_imagen = imagen.get("base64")
+
+        if base64_imagen:
+            base64_imagen = str(base64_imagen).strip()
+
+            if base64_imagen.startswith("data:"):
+                return base64_imagen
+
+            return f"data:{mime};base64,{base64_imagen}"
+
+        return None
+
+    def _texto_dorado_tarjeta_guardada(self, texto, size, max_lines=None):
+        return ft.Text(
+            texto,
+            text_align=ft.TextAlign.CENTER,
+            max_lines=max_lines,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            style=ft.TextStyle(
+                size=size,
+                weight=ft.FontWeight.BOLD,
+                color="#FFE47A",
+                shadow=[
+                    ft.BoxShadow(
+                        blur_radius=12,
+                        color=ft.Colors.with_opacity(0.70, "#E8AA23"),
+                        offset=ft.Offset(0, 0),
+                    ),
+                    ft.BoxShadow(
+                        blur_radius=3,
+                        color=ft.Colors.with_opacity(0.55, "#4A2100"),
+                        offset=ft.Offset(1.5, 2),
+                    ),
+                ],
+            ),
+        )
+
+    def _control_tarjeta_versiculo_guardada(self, registro, ancho=560, compacto=False):
+        ancho = max(170, min(float(ancho or 560), 760))
+        alto = ancho * 2 / 3
+        referencia = registro.get("referencia") or registro.get("nombre") or "Versiculo"
+        texto = registro.get("contenido") or registro.get("suma") or ""
+        largo_texto = len(texto)
+        ref_size = max(12, min(42, ancho * (0.057 if not compacto else 0.070)))
+        texto_size = max(
+            8,
+            min(
+                32,
+                ancho * (
+                    0.050
+                    if largo_texto < 130
+                    else 0.041
+                    if largo_texto < 230
+                    else 0.034
+                ),
+            ),
+        )
+
+        if compacto:
+            ref_size = min(ref_size, 15)
+            texto_size = min(texto_size, 10)
+
+        return ft.Container(
+            width=ancho,
+            height=alto,
+            border_radius=8 if compacto else 18,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            shadow=None if compacto else sombra_suave(),
+            content=ft.Stack(
+                controls=[
+                    ft.Image(
+                        src="tarjeta_versiculo_base.png",
+                        width=ancho,
+                        height=alto,
+                        fit=ft.BoxFit.COVER,
+                    ),
+                    ft.Container(
+                        left=ancho * 0.10,
+                        right=ancho * 0.10,
+                        top=alto * 0.11,
+                        content=self._texto_dorado_tarjeta_guardada(
+                            referencia,
+                            ref_size,
+                            max_lines=1,
+                        ),
+                    ),
+                    ft.Container(
+                        left=ancho * 0.12,
+                        right=ancho * 0.12,
+                        top=alto * 0.23,
+                        height=1 if compacto else 2,
+                        bgcolor=ft.Colors.with_opacity(0.82, "#FFE47A"),
+                    ),
+                    ft.Container(
+                        left=ancho * 0.09,
+                        right=ancho * 0.09,
+                        top=alto * 0.34,
+                        content=self._texto_dorado_tarjeta_guardada(
+                            texto,
+                            texto_size,
+                            max_lines=4 if compacto else 6,
+                        ),
+                    ),
+                ],
+            ),
+        )
+
     def _aviso_guardados(self, mensaje):
         self.page.snack_bar = ft.SnackBar(content=ft.Text(mensaje))
         self.page.snack_bar.open = True
@@ -1642,13 +1871,22 @@ class GuardadosView:
         ):
             return self.preview_biblia_codificada(registro)
 
-        if registro.get("tipo") != "pizarra":
-            return ft.Container(height=0)
+        if registro.get("subtipo") == "tarjeta_versiculo":
+            return ft.Container(
+                height=120,
+                alignment=ft.Alignment(0, 0),
+                content=self._control_tarjeta_versiculo_guardada(
+                    registro,
+                    ancho=180,
+                    compacto=True,
+                ),
+            )
 
         objetos = contenido.get("objetos", []) if isinstance(contenido, dict) else []
-        imagen = self.imagen_pizarra_base64(registro)
+        imagen = self.datos_imagen_registro(registro)
+        src_imagen = self.src_imagen_registro(imagen)
 
-        if imagen:
+        if src_imagen:
             return ft.Container(
                 height=110,
                 bgcolor=ft.Colors.WHITE,
@@ -1656,10 +1894,13 @@ class GuardadosView:
                 border_radius=4,
                 clip_behavior=ft.ClipBehavior.HARD_EDGE,
                 content=ft.Image(
-                    src=base64.b64decode(imagen),
+                    src=src_imagen,
                     fit=ft.BoxFit.CONTAIN,
                 ),
             )
+
+        if registro.get("tipo") != "pizarra":
+            return ft.Container(height=0)
 
         ancho = 180
         alto = 86
@@ -2061,50 +2302,7 @@ class GuardadosView:
         )
 
     def _acciones_registro_inline(self, registro, compacto=False):
-        ancho = 30 if compacto else 34
-        tamano = 16 if compacto else 18
-
-        return ft.Row(
-            tight=True,
-            spacing=0,
-            controls=[
-                self._boton_accion_inline(
-                    ft.Icons.VISIBILITY,
-                    "Ver",
-                    lambda r=registro: self.abrir_detalle(r),
-                    ancho,
-                    tamano,
-                ),
-                self._boton_accion_inline(
-                    ft.Icons.EDIT,
-                    "Editar",
-                    lambda r=registro: self.editar_registro(r),
-                    ancho,
-                    tamano,
-                ),
-                self._boton_accion_inline(
-                    ft.Icons.SHARE,
-                    "Enviar / compartir",
-                    lambda r=registro: self._compartir_registro_directo_desde_icono(r),
-                    ancho,
-                    tamano,
-                ),
-                self._boton_accion_inline(
-                    ft.Icons.DRIVE_FILE_MOVE,
-                    "Mover",
-                    lambda r=registro: self._mover_registro_directo(r),
-                    ancho,
-                    tamano,
-                ),
-                self._boton_accion_inline(
-                    ft.Icons.DELETE_OUTLINE,
-                    "Eliminar",
-                    lambda r=registro: self.confirmar_eliminar(r["id"]),
-                    ancho,
-                    tamano,
-                ),
-            ],
-        )
+        return ft.Container(width=0, height=0)
     # ======================================
     # f() BARRA SUPERIOR
     # ======================================
@@ -2379,9 +2577,36 @@ class GuardadosView:
     # ======================================
     # OBTENER VISTA
     # ======================================
+    def on_enter(self):
+        self._aplicar_carpeta_preferida()
+
+    def _aplicar_carpeta_preferida(self):
+        id_carpeta = getattr(state, "carpeta_guardados_preferida", None)
+
+        if not id_carpeta:
+            return
+
+        carpeta = self.carpetas.obtener_por_id(id_carpeta)
+
+        if not carpeta:
+            state.carpeta_guardados_preferida = None
+            return
+
+        self.carpeta_actual_id = carpeta["id"]
+        self.carpeta_actual_nombre = carpeta["nombre"]
+        self.carpeta_seleccionada_id = carpeta["id"]
+        self.carpeta_seleccionada_nombre = carpeta["nombre"]
+        self.ruta_carpetas = self.carpetas.obtener_ruta(carpeta["id"])
+        self.carpetas_expandidas.update(
+            item["id"]
+            for item in self.ruta_carpetas
+        )
+        state.carpeta_guardados_preferida = None
+
     def obtener_vista(self):
         self.page.on_resize = self._on_resize
 
+        self._aplicar_carpeta_preferida()
         self.cargar_vista_carpetas()
         self.actualizar_barra_ruta()
         self.actualizar_tabla()
@@ -3811,6 +4036,22 @@ class GuardadosView:
             self._aviso_guardados("Seleccione un archivo para compartir.")
             return
 
+        if len(seleccionados) == 1 and seleccionados[0].get("subtipo") == "tarjeta_versiculo":
+            self.descargar_tarjeta_versiculo(seleccionados[0])
+            return
+
+        if len(seleccionados) == 1:
+            imagen = self.archivo_imagen_registro(seleccionados[0])
+
+            if imagen:
+                compartir_archivo(
+                    self.page,
+                    imagen["archivo"],
+                    self.titulo_registro(seleccionados[0]),
+                    imagen["mime"],
+                )
+                return
+
         texto = "\n\n---\n\n".join(
             self.texto_registro(registro)
             for registro in seleccionados
@@ -3827,6 +4068,501 @@ class GuardadosView:
             texto,
             titulo,
         )
+
+    def _obtener_file_picker_tarjeta(self):
+        if self.file_picker_tarjeta is not None:
+            return self.file_picker_tarjeta
+
+        self.file_picker_tarjeta = ft.FilePicker()
+
+        try:
+            self.page.services.append(self.file_picker_tarjeta)
+            self.page.update()
+        except Exception:
+            try:
+                self.page.overlay.append(self.file_picker_tarjeta)
+                self.page.update()
+            except Exception:
+                pass
+
+        return self.file_picker_tarjeta
+
+    def _nombre_archivo_tarjeta_jpg(self, referencia):
+        limpio = "".join(
+            caracter if caracter.isalnum() else "_"
+            for caracter in str(referencia or "tarjeta")
+        ).strip("_")
+        return f"tarjeta_{limpio or 'versiculo'}_{int(time.time() * 1000)}.jpg"
+
+    def _cerrar_flotante_guardados(self, control):
+        if control is None:
+            return
+
+        try:
+            control.open = False
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self.page, "close"):
+                self.page.close(control)
+        except Exception:
+            pass
+
+        try:
+            while control in self.page.overlay:
+                self.page.overlay.remove(control)
+        except Exception:
+            pass
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _crear_flotante_guardados(self, titulo, contenido, acciones, ancho=460, alto=360):
+        ancho_page = getattr(self.page, "width", None) or 760
+        alto_page = getattr(self.page, "height", None) or 720
+        return ft.Container(
+            width=ancho_page,
+            height=alto_page,
+            bgcolor=ft.Colors.with_opacity(0.55, ft.Colors.BLACK),
+            alignment=ft.Alignment(0, 0),
+            content=ft.Container(
+                width=min(ancho, max(300, ancho_page - 32)),
+                height=min(alto, max(300, alto_page - 40)),
+                padding=ft.Padding(24, 22, 24, 18),
+                border_radius=24,
+                bgcolor=PERLA_PANEL,
+                shadow=sombra_suave(),
+                content=ft.Column(
+                    spacing=14,
+                    controls=[
+                        ft.Text(
+                            titulo,
+                            size=22,
+                            weight=ft.FontWeight.W_500,
+                            color=TEXTO_PRINCIPAL,
+                        ),
+                        ft.Container(
+                            expand=True,
+                            content=contenido,
+                        ),
+                        ft.Row(
+                            alignment=ft.MainAxisAlignment.END,
+                            spacing=10,
+                            controls=acciones,
+                        ),
+                    ],
+                ),
+            ),
+        )
+
+    def _confirmar_descarga_tarjeta_jpg(self, destino):
+        destino = Path(destino)
+
+        def cerrar(e=None):
+            self._cerrar_flotante_guardados(dialog)
+
+        def copiar(e=None):
+            copiar_al_portapapeles(self.page, str(destino))
+
+        def abrir_carpeta(e=None):
+            try:
+                if os.name == "nt":
+                    os.startfile(str(destino.parent))
+                else:
+                    self.page.launch_url(destino.parent.as_uri())
+            except Exception:
+                self._aviso_guardados("No se pudo abrir la carpeta.")
+
+        dialog = self._crear_flotante_guardados(
+            "JPG descargado",
+            ft.Column(
+                spacing=8,
+                controls=[
+                    ft.Text("La tarjeta se guardo correctamente en:"),
+                    ft.Text(str(destino), selectable=True, color=TEXTO_SECUNDARIO),
+                ],
+            ),
+            [
+                ft.OutlinedButton(
+                    "Abrir carpeta",
+                    icon=ft.Icons.FOLDER_OPEN,
+                    on_click=abrir_carpeta,
+                ),
+                ft.OutlinedButton(
+                    "Copiar ruta",
+                    icon=ft.Icons.CONTENT_COPY,
+                    on_click=copiar,
+                ),
+                ft.ElevatedButton("Aceptar", on_click=cerrar),
+            ],
+            ancho=560,
+            alto=300,
+        )
+
+        self.page.overlay.append(dialog)
+        self.page.update()
+
+    def descargar_tarjeta_versiculo(self, registro):
+        archivo = self._preparar_archivo_tarjeta_versiculo(registro)
+
+        if not archivo:
+            self._aviso_guardados("No se pudo preparar la tarjeta JPG.")
+            return
+
+        if self._es_descarga_tarjeta_escritorio():
+            self._mostrar_selector_carpeta_descarga_tarjeta(archivo)
+            return
+
+        # En web y móvil el sistema entrega la descarga al navegador.
+        if hasattr(self.page, "run_task"):
+            self.page.run_task(self._descargar_tarjeta_versiculo_async, registro, str(archivo))
+        else:
+            self._aviso_guardados("No se pudo iniciar la descarga.")
+
+    def _preparar_archivo_tarjeta_versiculo(self, registro):
+        referencia = registro.get("referencia") or registro.get("nombre") or "Versiculo"
+        texto = registro.get("contenido") or registro.get("suma") or ""
+
+        imagen = None
+
+        if texto:
+            try:
+                imagen = datos_tarjeta_versiculo(
+                    referencia,
+                    texto,
+                    nombre_archivo=self._nombre_archivo_tarjeta_jpg(referencia),
+                )
+                registro["imagen_archivo"] = imagen["archivo"]
+                registro["imagen_mime"] = "image/jpeg"
+                registro["imagen_extension"] = "jpg"
+            except Exception:
+                imagen = None
+
+        if not imagen:
+            imagen = self.archivo_imagen_registro(registro)
+
+        if not imagen:
+            return None
+
+        archivo = Path(imagen["archivo"])
+
+        if not archivo.exists():
+            return None
+
+        if archivo.suffix.lower() in (".jpg", ".jpeg"):
+            return archivo
+
+        if not texto:
+            return None
+
+        try:
+            imagen = datos_tarjeta_versiculo(
+                referencia,
+                texto,
+                nombre_archivo=self._nombre_archivo_tarjeta_jpg(referencia),
+            )
+            registro["imagen_archivo"] = imagen["archivo"]
+            registro["imagen_mime"] = "image/jpeg"
+            registro["imagen_extension"] = "jpg"
+            archivo = Path(imagen["archivo"])
+            return archivo if archivo.exists() else None
+        except Exception:
+            return None
+
+    async def _descargar_tarjeta_versiculo_async(self, registro, archivo=None):
+        archivo = Path(archivo) if archivo else self._preparar_archivo_tarjeta_versiculo(registro)
+
+        if not archivo:
+            self._aviso_guardados("No se pudo preparar la tarjeta JPG.")
+            return
+
+        try:
+            datos = Path(archivo).read_bytes()
+        except Exception:
+            self._aviso_guardados("No se pudo leer la tarjeta JPG.")
+            return
+
+        picker = self._obtener_file_picker_tarjeta()
+        destino = None
+
+        try:
+            destino = await picker.save_file(
+                dialog_title="Guardar tarjeta JPG",
+                file_name=Path(archivo).name,
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["jpg"],
+                src_bytes=datos,
+            )
+        except Exception as error:
+            self._aviso_guardados(f"No se pudo abrir el selector de guardado: {error}")
+            return
+
+        if destino:
+            self._confirmar_descarga_tarjeta_jpg(destino)
+            return
+
+        self._aviso_guardados("La descarga JPG se inició en el dispositivo.")
+
+    def _carpeta_descargas_local(self):
+        candidatos = []
+        userprofile = os.environ.get("USERPROFILE")
+
+        if userprofile:
+            candidatos.extend(
+                [
+                    Path(userprofile) / "Downloads",
+                    Path(userprofile) / "Descargas",
+                ]
+            )
+
+        candidatos.extend(
+            [
+                Path.home() / "Downloads",
+                Path.home() / "Descargas",
+                Path.home(),
+            ]
+        )
+
+        for carpeta in candidatos:
+            try:
+                carpeta.mkdir(parents=True, exist_ok=True)
+                return carpeta
+            except Exception:
+                continue
+
+        return Path(ruta_exportacion("")).parent
+
+    def _es_descarga_tarjeta_escritorio(self):
+        if bool(getattr(self.page, "web", False)):
+            return False
+
+        plataforma = getattr(self.page, "platform", None)
+        return plataforma not in (ft.PagePlatform.ANDROID, ft.PagePlatform.IOS)
+
+    def _unidades_locales(self):
+        if os.name != "nt":
+            return [Path.home().anchor or Path("/")]
+
+        unidades = []
+
+        for letra in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            unidad = Path(f"{letra}:/")
+
+            try:
+                if unidad.exists():
+                    unidades.append(unidad)
+            except OSError:
+                pass
+
+        return unidades or [Path.home().anchor or Path("/")]
+
+    def _mostrar_selector_carpeta_descarga_tarjeta(self, archivo):
+        archivo = Path(archivo)
+
+        if not archivo.exists():
+            self._aviso_guardados("No se encontro la tarjeta JPG para descargar.")
+            return
+
+        estado = {"ruta": self._carpeta_descargas_local()}
+        ruta_texto = ft.Text(
+            str(estado["ruta"]),
+            size=12,
+            color=TEXTO_SECUNDARIO,
+            selectable=True,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+        nombre = ft.TextField(
+            label="Nombre del archivo",
+            value=archivo.name,
+            dense=True,
+            height=54,
+        )
+        lista = ft.ListView(expand=True, spacing=4, padding=4)
+        subir = ft.IconButton(
+            icon=ft.Icons.ARROW_UPWARD,
+            tooltip="Subir una carpeta",
+        )
+        dialog_ref = {"control": None}
+
+        def cerrar(e=None):
+            self._cerrar_flotante_guardados(dialog_ref["control"])
+
+        def ir_a(ruta):
+            try:
+                ruta = Path(ruta)
+
+                if not ruta.exists() or not ruta.is_dir():
+                    self._aviso_guardados("No se pudo abrir esa carpeta.")
+                    return
+
+                estado["ruta"] = ruta
+                renderizar()
+            except OSError:
+                self._aviso_guardados("No se pudo abrir esa carpeta.")
+
+        def subir_un_nivel(e=None):
+            actual = estado["ruta"]
+            padre = actual.parent
+
+            if padre != actual:
+                ir_a(padre)
+
+        def crear_item_carpeta(carpeta):
+            return ft.GestureDetector(
+                mouse_cursor=ft.MouseCursor.CLICK,
+                on_tap=lambda e, ruta=carpeta: ir_a(ruta),
+                content=ft.Container(
+                    padding=ft.Padding(10, 8, 10, 8),
+                    border_radius=9,
+                    bgcolor=ft.Colors.with_opacity(0.04, VIOLETA_IOS),
+                    content=ft.Row(
+                        spacing=10,
+                        controls=[
+                            ft.Icon(ft.Icons.FOLDER, color=ft.Colors.AMBER_800),
+                            ft.Text(
+                                carpeta.name or str(carpeta),
+                                expand=True,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                            ft.Icon(ft.Icons.CHEVRON_RIGHT, color=TEXTO_SECUNDARIO),
+                        ],
+                    ),
+                ),
+            )
+
+        def renderizar():
+            actual = estado["ruta"]
+            ruta_texto.value = str(actual)
+            subir.disabled = actual.parent == actual
+            lista.controls.clear()
+
+            try:
+                carpetas = sorted(
+                    (
+                        item
+                        for item in actual.iterdir()
+                        if item.is_dir() and not item.name.startswith("$")
+                    ),
+                    key=lambda item: item.name.casefold(),
+                )
+            except (OSError, PermissionError):
+                carpetas = []
+
+            if carpetas:
+                lista.controls.extend(crear_item_carpeta(carpeta) for carpeta in carpetas)
+            else:
+                lista.controls.append(
+                    ft.Container(
+                        padding=20,
+                        alignment=ft.Alignment(0, 0),
+                        content=ft.Text("No hay carpetas disponibles aquí.", color=TEXTO_SECUNDARIO),
+                    )
+                )
+
+            for control in (ruta_texto, subir, lista):
+                try:
+                    control.update()
+                except (RuntimeError, AssertionError):
+                    pass
+
+        def guardar_aqui(e=None):
+            nombre_archivo = Path(str(nombre.value or archivo.name).strip()).name
+
+            if not nombre_archivo:
+                self._aviso_guardados("Ingresá un nombre para el archivo.")
+                return
+
+            if Path(nombre_archivo).suffix.lower() not in (".jpg", ".jpeg"):
+                nombre_archivo = f"{nombre_archivo}.jpg"
+
+            destino = self._guardar_tarjeta_jpg_en_destino(
+                archivo,
+                estado["ruta"] / nombre_archivo,
+            )
+
+            if not destino:
+                self._aviso_guardados("No se pudo guardar el JPG en esa carpeta.")
+                return
+
+            cerrar()
+            self._confirmar_descarga_tarjeta_jpg(destino)
+
+        unidades = [
+            ft.OutlinedButton(
+                str(unidad),
+                icon=ft.Icons.DRIVE_FOLDER_UPLOAD,
+                on_click=lambda e, ruta=unidad: ir_a(ruta),
+            )
+            for unidad in self._unidades_locales()
+        ]
+        acciones_ruta = ft.Row(
+            spacing=4,
+            controls=[
+                subir,
+                ft.OutlinedButton(
+                    "Descargas",
+                    icon=ft.Icons.DOWNLOAD,
+                    on_click=lambda e: ir_a(self._carpeta_descargas_local()),
+                ),
+                *unidades,
+            ],
+            scroll=ft.ScrollMode.AUTO,
+        )
+        contenido = ft.Column(
+            expand=True,
+            spacing=10,
+            controls=[
+                ft.Text("Elegí la carpeta donde querés guardar la tarjeta JPG."),
+                acciones_ruta,
+                ruta_texto,
+                ft.Container(
+                    expand=True,
+                    border=ft.Border.all(1, PERLA_BORDE),
+                    border_radius=12,
+                    content=lista,
+                ),
+                nombre,
+            ],
+        )
+        dialog = self._crear_flotante_guardados(
+            "Guardar tarjeta JPG",
+            contenido,
+            [
+                ft.TextButton("Cancelar", on_click=cerrar),
+                ft.ElevatedButton(
+                    "Guardar aquí",
+                    icon=ft.Icons.SAVE_ALT,
+                    on_click=guardar_aqui,
+                ),
+            ],
+            ancho=720,
+            alto=650,
+        )
+        dialog_ref["control"] = dialog
+        self.page.overlay.append(dialog)
+        renderizar()
+        self.page.update()
+
+    def _guardar_tarjeta_jpg_en_destino(self, archivo, destino):
+        archivo = Path(archivo)
+        destino = Path(destino)
+
+        if not archivo.exists():
+            return None
+
+        if destino.suffix.lower() not in (".jpg", ".jpeg"):
+            destino = destino.with_suffix(".jpg")
+
+        try:
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_bytes(archivo.read_bytes())
+        except Exception:
+            return None
+
+        return destino if destino.exists() and destino.stat().st_size > 0 else None
     # ======================================
     # ELIMINAR SELECIONADO
     # ======================================
@@ -3848,6 +4584,10 @@ class GuardadosView:
     # F() ABRIR DETALLE
     # ======================================
     def abrir_detalle(self, registro):
+        if registro.get("subtipo") == "tarjeta_versiculo":
+            self._abrir_detalle_tarjeta_versiculo(registro)
+            return
+
         if registro.get("tipo", "tarjeta") == "tarjeta":
             contenido = registro.get("contenido") or {}
             palabra = registro.get("palabra", "")
@@ -3874,7 +4614,71 @@ class GuardadosView:
 
         def cerrar(e=None):
             dialog.open = False
+            try:
+                if hasattr(self.page, "close"):
+                    self.page.close(dialog)
+            except Exception:
+                pass
+            try:
+                if dialog in self.page.overlay:
+                    self.page.overlay.remove(dialog)
+            except Exception:
+                pass
             self.page.update()
+
+        contenido_dialogo = []
+        es_tarjeta_versiculo = registro.get("subtipo") == "tarjeta_versiculo"
+
+        if es_tarjeta_versiculo:
+            contenido_dialogo.append(
+                self._control_tarjeta_versiculo_guardada(
+                    registro,
+                    ancho=560,
+                    compacto=False,
+                )
+            )
+            src_imagen = True
+        else:
+            imagen = self.datos_imagen_registro(registro)
+            src_imagen = self.src_imagen_registro(imagen)
+
+        if src_imagen and registro.get("subtipo") != "tarjeta_versiculo":
+            contenido_dialogo.append(
+                ft.Image(
+                    src=src_imagen,
+                    fit=ft.BoxFit.CONTAIN,
+                    width=560,
+                    height=300,
+                )
+            )
+
+        if not es_tarjeta_versiculo:
+            contenido_dialogo.append(
+                ft.Text(
+                    self.texto_registro(registro),
+                    selectable=True,
+                )
+            )
+
+        acciones = [ft.TextButton("Cerrar", on_click=cerrar)]
+
+        if es_tarjeta_versiculo:
+            acciones.append(
+                ft.ElevatedButton(
+                    "Descargar JPG",
+                    icon=ft.Icons.DOWNLOAD,
+                    on_click=lambda e: self.descargar_tarjeta_versiculo(registro),
+                )
+            )
+        else:
+            acciones.append(
+                ft.ElevatedButton(
+                    "Compartir",
+                    icon=ft.Icons.SHARE,
+                    visible=bool(src_imagen),
+                    on_click=lambda e: self.compartir_registro_directo(registro),
+                )
+            )
 
         dialog = ft.AlertDialog(
             title=ft.Text(self.titulo_registro(registro)),
@@ -3883,21 +4687,50 @@ class GuardadosView:
                 height=360,
                 content=ft.Column(
                     scroll=ft.ScrollMode.AUTO,
-                    controls=[
-                        ft.Text(
-                            self.texto_registro(registro),
-                            selectable=True,
-                        )
-                    ],
+                    controls=contenido_dialogo,
                 ),
             ),
-            actions=[
-                ft.TextButton("Cerrar", on_click=cerrar),
-            ],
+            actions=acciones,
         )
 
         self.page.overlay.append(dialog)
         dialog.open = True
+        self.page.update()
+
+    def _abrir_detalle_tarjeta_versiculo(self, registro):
+        dialog_ref = {"control": None}
+
+        def cerrar(e=None):
+            self._cerrar_flotante_guardados(dialog_ref["control"])
+
+        def descargar(e=None):
+            self.descargar_tarjeta_versiculo(registro)
+
+        contenido = ft.Column(
+            scroll=ft.ScrollMode.AUTO,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=12,
+            controls=[
+                self._control_tarjeta_versiculo_guardada(
+                    registro,
+                    ancho=560,
+                    compacto=False,
+                )
+            ],
+        )
+
+        dialog = self._crear_flotante_guardados(
+            self.titulo_registro(registro),
+            contenido,
+            [
+                ft.TextButton("Cerrar", on_click=cerrar),
+                ft.ElevatedButton("Descargar JPG", icon=ft.Icons.DOWNLOAD, on_click=descargar),
+            ],
+            ancho=680,
+            alto=540,
+        )
+        dialog_ref["control"] = dialog
+        self.page.overlay.append(dialog)
         self.page.update()
 
     def abrir_detalle_pizarra(self, registro):
@@ -3959,6 +4792,21 @@ class GuardadosView:
         self.page.update()
 
     def compartir_registro_directo(self, registro):
+        if registro.get("subtipo") == "tarjeta_versiculo":
+            self.descargar_tarjeta_versiculo(registro)
+            return
+
+        imagen = self.archivo_imagen_registro(registro)
+
+        if imagen:
+            compartir_archivo(
+                self.page,
+                imagen["archivo"],
+                self.titulo_registro(registro),
+                imagen["mime"],
+            )
+            return
+
         compartir_texto(
             self.page,
             self.texto_registro(registro),
@@ -4332,6 +5180,10 @@ class GuardadosView:
         if event == "update":
             self.actualizar_tabla()
             self.cargar_vista_carpetas()
+            try:
+                self.page.update()
+            except Exception:
+                pass
 
     def obtener_carpeta_actual(self):
 

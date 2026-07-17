@@ -5,6 +5,7 @@ description = "CODIGO ESCONDIDO 19"
 dependencies = [
     "flet",
     "flet-audio",
+    "pillow",
 ]
 
 [tool.flet]

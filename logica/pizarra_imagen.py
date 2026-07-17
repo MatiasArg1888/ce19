@@ -93,6 +93,11 @@ def _bounds(objetos):
             for x, y in objeto.get("puntos", []):
                 xs.append(x)
                 ys.append(y)
+        elif objeto.get("tipo") == "borrado":
+            margen = max(objeto.get("tamano", 1) / 2, 1)
+            for x, y in objeto.get("puntos", []):
+                xs.extend([x - margen, x + margen])
+                ys.extend([y - margen, y + margen])
         elif "desde" in objeto:
             xs.extend([objeto["desde"][0], objeto["hasta"][0]])
             ys.extend([objeto["desde"][1], objeto["hasta"][1]])
@@ -148,6 +153,30 @@ def renderizar_lienzo_png_base64(lienzo, ancho=900, alto=520):
                 if borde:
                     _linea(pixeles, ancho, alto, x1, y1, x2, y2, grosor_borde, borde)
                 _linea(pixeles, ancho, alto, x1, y1, x2, y2, grosor, color)
+
+        elif tipo == "borrado":
+            color_borrado = fondo
+            tamano = max(objeto.get("tamano", 12) * escala, 1)
+            mitad = tamano / 2
+            puntos_borrado = objeto.get("puntos", [])
+
+            if len(puntos_borrado) > 1:
+                for i in range(len(puntos_borrado) - 1):
+                    x1, y1 = p(puntos_borrado[i])
+                    x2, y2 = p(puntos_borrado[i + 1])
+                    _linea(pixeles, ancho, alto, x1, y1, x2, y2, tamano, color_borrado)
+                continue
+
+            for punto_borrado in puntos_borrado:
+                cx, cy = p(punto_borrado)
+                x1 = int(round(cx - mitad))
+                x2 = int(round(cx + mitad))
+                y1 = int(round(cy - mitad))
+                y2 = int(round(cy + mitad))
+
+                for y in range(y1, y2 + 1):
+                    for x in range(x1, x2 + 1):
+                        _poner_pixel(pixeles, ancho, alto, x, y, color_borrado)
 
         elif tipo == "linea":
             x1, y1 = p(objeto["desde"])

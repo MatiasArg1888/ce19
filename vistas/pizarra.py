@@ -87,6 +87,8 @@ class PizarraView:
         self._inicio = None
         self._ultimo = None
         self._trazo_actual = None
+        self._borrado_actual = None
+        self._borrado_canvas_inicio = None
         self._cursor_activo = False
         self._cursor_punto = None
         self._modo_mover_gesto = False
@@ -456,11 +458,13 @@ class PizarraView:
         )
 
         area = ft.GestureDetector(
-            mouse_cursor=ft.MouseCursor.CLICK,
-            drag_interval=8,
+            mouse_cursor=ft.MouseCursor.NONE if self.herramienta == "borrador" else ft.MouseCursor.CLICK,
+            drag_interval=16 if self.herramienta == "borrador" else 8,
+            hover_interval=32,
             on_pan_start=self._pan_start,
             on_pan_update=self._pan_update,
             on_pan_end=self._pan_end,
+            on_hover=self._hover_lienzo,
             on_tap_down=self._tap_down,
             on_double_tap_down=self._doble_tap_down,
             on_long_press_start=self._long_press_start,
@@ -643,7 +647,10 @@ class PizarraView:
         if self.herramienta == "borrador":
             self._cursor_activo = True
             self._cursor_punto = punto
-            self.borrar_en_punto(punto)
+            self._borrado_actual = self._crear_trazo_borrador(punto)
+            self.lienzos[self.lienzo_actual]["objetos"].append(self._borrado_actual)
+            self._iniciar_borrado_canvas()
+            self._redibujar_overlay()
 
         if self.herramienta == "lapiz":
             self._cursor_activo = True
@@ -696,7 +703,7 @@ class PizarraView:
         if self.herramienta == "borrador":
             self._cursor_activo = True
             self._cursor_punto = punto
-            self.borrar_en_punto(punto)
+            self.borrar_en_punto(punto, anterior)
             return
 
         if self.herramienta in ("linea", "rectangulo", "circulo") and self._inicio:
@@ -727,7 +734,15 @@ class PizarraView:
             self._redibujar_lienzo()
 
     def _pan_end(self, e):
-        if self.herramienta in ("lapiz", "borrador"):
+        if self.herramienta == "borrador":
+            self._cursor_activo = True
+            self._trazo_actual = None
+            self._borrado_actual = None
+            self._borrado_canvas_inicio = None
+            self._redibujar_overlay()
+            return
+
+        if self.herramienta == "lapiz":
             self._cursor_activo = False
             self._cursor_punto = None
             self._trazo_actual = None
@@ -759,6 +774,14 @@ class PizarraView:
         self._ultimo = None
         self._agregar_objeto(objeto)
 
+    def _hover_lienzo(self, e):
+        if self.herramienta != "borrador" or not e.local_position:
+            return
+
+        self._cursor_activo = True
+        self._cursor_punto = self._punto(e.local_position)
+        self._redibujar_overlay()
+
     def _tap_down(self, e):
         punto = self._punto(e.local_position)
 
@@ -771,7 +794,14 @@ class PizarraView:
             )
             self._redibujar_lienzo()
         elif self.herramienta == "borrador":
-            self.borrar_en_punto(punto)
+            self._cursor_activo = True
+            self._cursor_punto = punto
+            self._borrado_actual = self._crear_trazo_borrador(punto)
+            self.lienzos[self.lienzo_actual]["objetos"].append(self._borrado_actual)
+            self._iniciar_borrado_canvas()
+            self._borrado_actual = None
+            self._borrado_canvas_inicio = None
+            self._redibujar_overlay()
         elif self.herramienta == "texto":
             self.dialog_agregar_texto(punto)
         elif self.herramienta == "pintar":
@@ -882,6 +912,12 @@ class PizarraView:
             self._limitar(offset.y / self.zoom - self.pan_y, 0, ALTO_LIENZO),
         )
 
+    def _punto_centro_visible(self):
+        return (
+            self._limitar(self.viewport_ancho / (2 * max(self.zoom, 0.3)) - self.pan_x, 0, ANCHO_LIENZO),
+            self._limitar(self.viewport_alto / (2 * max(self.zoom, 0.3)) - self.pan_y, 0, ALTO_LIENZO),
+        )
+
     def _pantalla(self, punto):
         return (
             (punto[0] + self.pan_x) * self.zoom,
@@ -912,6 +948,16 @@ class PizarraView:
             color=color,
             style=ft.PaintingStyle.FILL,
             anti_alias=True,
+        )
+
+    def _pintura_borrador(self, tamano):
+        return ft.Paint(
+            color=self.lienzos[self.lienzo_actual].get("fondo", "#FFFFFF"),
+            stroke_width=max(tamano * self.zoom, 1),
+            style=ft.PaintingStyle.STROKE,
+            stroke_cap=ft.StrokeCap.SQUARE,
+            stroke_join=ft.StrokeJoin.BEVEL,
+            anti_alias=False,
         )
 
     def _formas_con_borde_blanco(self, creador, color, grosor):
@@ -965,6 +1011,9 @@ class PizarraView:
 
     def _formas_objeto(self, objeto):
         tipo = objeto.get("tipo")
+
+        if tipo == "borrado":
+            return self._formas_borrado(objeto)
 
         if tipo == "trazo":
             return self._formas_trazo(objeto)
@@ -1048,6 +1097,111 @@ class PizarraView:
             return [texto_canvas(color)]
 
         return []
+
+    def _formas_borrado(self, objeto):
+        puntos = objeto.get("puntos", [])
+
+        if not puntos:
+            return []
+
+        color = self.lienzos[self.lienzo_actual].get("fondo", "#FFFFFF")
+        tamano = max(objeto.get("tamano", self.borrador), 1)
+        medida = max(tamano * self.zoom, 1)
+
+        if len(puntos) == 1:
+            sx, sy = self._pantalla(puntos[0])
+            return [
+                cv.Rect(
+                    sx - medida / 2,
+                    sy - medida / 2,
+                    medida,
+                    medida,
+                    paint=self._pintura_relleno(color),
+                )
+            ]
+
+        elementos = []
+        sx, sy = self._pantalla(puntos[0])
+        elementos.append(cv.Path.MoveTo(sx, sy))
+
+        for punto in puntos[1:]:
+            sx, sy = self._pantalla(punto)
+            elementos.append(cv.Path.LineTo(sx, sy))
+
+        return [
+            cv.Path(
+                elementos,
+                paint=self._pintura_borrador(tamano),
+            )
+        ]
+
+    def _forma_borrado_punto(self, punto, tamano=None):
+        tamano = max(tamano or self.borrador, 1)
+        medida = max(tamano * self.zoom, 1)
+        sx, sy = self._pantalla(punto)
+        return cv.Rect(
+            sx - medida / 2,
+            sy - medida / 2,
+            medida,
+            medida,
+            paint=self._pintura_relleno(self.lienzos[self.lienzo_actual].get("fondo", "#FFFFFF")),
+        )
+
+    def _forma_borrado_segmento(self, desde, hasta, tamano=None):
+        tamano = max(tamano or self.borrador, 1)
+        sx1, sy1 = self._pantalla(desde)
+        sx2, sy2 = self._pantalla(hasta)
+        return cv.Line(
+            sx1,
+            sy1,
+            sx2,
+            sy2,
+            paint=self._pintura_borrador(tamano),
+        )
+
+    def _agregar_formas_canvas(self, formas):
+        if not formas:
+            return
+
+        if not self.canvas:
+            self._redibujar_lienzo()
+            return
+
+        self.canvas.shapes.extend(formas)
+
+        try:
+            self.canvas.update()
+        except (RuntimeError, AssertionError):
+            self._redibujar_lienzo()
+
+    def _iniciar_borrado_canvas(self):
+        if not self.canvas or self._borrado_actual is None:
+            self._redibujar_lienzo()
+            return
+
+        self._borrado_canvas_inicio = len(self.canvas.shapes)
+        self.canvas.shapes.extend(self._formas_borrado(self._borrado_actual))
+
+        try:
+            self.canvas.update()
+        except (RuntimeError, AssertionError):
+            self._redibujar_lienzo()
+
+    def _actualizar_borrado_canvas(self):
+        if not self.canvas or self._borrado_actual is None:
+            return
+
+        if self._borrado_canvas_inicio is None:
+            self._iniciar_borrado_canvas()
+            return
+
+        del self.canvas.shapes[self._borrado_canvas_inicio:]
+        self.canvas.shapes.extend(self._formas_borrado(self._borrado_actual))
+
+        try:
+            self.canvas.update()
+        except (RuntimeError, AssertionError):
+            self._redibujar_lienzo()
 
     def _formas_trazo(self, objeto):
         puntos = objeto.get("puntos", [])
@@ -1170,6 +1324,18 @@ class PizarraView:
         except (RuntimeError, AssertionError):
             self.router.refrescar()
 
+    def _redibujar_overlay(self):
+        if not self.overlay_stack:
+            return
+
+        self.overlay_stack.controls.clear()
+        self.overlay_stack.controls.extend(self._overlays_lienzo())
+
+        try:
+            self.overlay_stack.update()
+        except (RuntimeError, AssertionError):
+            pass
+
     def _overlays_lienzo(self):
         controles = []
         objetos = self.lienzos[self.lienzo_actual]["objetos"]
@@ -1178,6 +1344,8 @@ class PizarraView:
 
         if self.herramienta == "seleccionar":
             for indice in range(len(objetos) - 1, -1, -1):
+                if objetos[indice].get("tipo") == "borrado":
+                    continue
                 controles.append(self._hitbox_objeto(indice, objetos[indice]))
 
         if seleccion:
@@ -1236,18 +1404,24 @@ class PizarraView:
                         top=sy - medida / 2,
                         width=medida,
                         height=medida,
-                        shape=ft.BoxShape.CIRCLE,
-                        border=ft.Border.all(2, ft.Colors.RED_400),
-                        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.RED),
+                        border=ft.Border.all(2, ft.Colors.BLACK),
+                        bgcolor=ft.Colors.with_opacity(0.34, ft.Colors.WHITE),
+                        shadow=ft.BoxShadow(
+                            blur_radius=4,
+                            color=ft.Colors.with_opacity(0.26, ft.Colors.BLACK),
+                            offset=ft.Offset(0, 1),
+                        ),
+                        ignore_interactions=True,
                     )
                 )
                 controles.append(
-                    ft.Icon(
-                        ft.Icons.AUTO_FIX_HIGH,
-                        left=sx + medida / 2,
-                        top=sy - medida / 2,
-                        size=22,
-                        color=ft.Colors.RED_700,
+                    ft.Container(
+                        left=sx - medida / 2 + 2,
+                        top=sy - medida / 2 + 2,
+                        width=max(medida - 4, 4),
+                        height=max(medida - 4, 4),
+                        border=ft.Border.all(1, ft.Colors.WHITE),
+                        ignore_interactions=True,
                     )
                 )
             else:
@@ -1484,6 +1658,22 @@ class PizarraView:
                 max(ys) + margen,
             )
 
+        if tipo == "borrado":
+            puntos = objeto.get("puntos", [])
+
+            if not puntos:
+                return (0, 0, 0, 0)
+
+            margen_borrador = max(objeto.get("tamano", self.borrador) / 2, 1)
+            xs = [punto[0] for punto in puntos]
+            ys = [punto[1] for punto in puntos]
+            return (
+                min(xs) - margen_borrador,
+                min(ys) - margen_borrador,
+                max(xs) + margen_borrador,
+                max(ys) + margen_borrador,
+            )
+
         if tipo == "texto":
             size = max(14, objeto.get("grosor", 4) * 5)
             ancho = max(len(objeto.get("texto", "")) * size * 0.72 + 28, 80)
@@ -1539,6 +1729,9 @@ class PizarraView:
         for indice in range(len(objetos) - 1, -1, -1):
             objeto = objetos[indice]
 
+            if objeto.get("tipo") == "borrado":
+                continue
+
             if self._punto_toca_objeto(punto, objeto):
                 return indice
 
@@ -1584,6 +1777,9 @@ class PizarraView:
         seleccion = []
 
         for indice in range(len(objetos) - 1, -1, -1):
+            if objetos[indice].get("tipo") == "borrado":
+                continue
+
             x1, y1, x2, y2 = self._bounds(objetos[indice])
 
             if x1 <= rx2 and x2 >= rx1 and y1 <= ry2 and y2 >= ry1:
@@ -1667,26 +1863,47 @@ class PizarraView:
         if refrescar:
             self.router.refrescar()
 
-    def borrar_en_punto(self, punto):
-        objetos = self.lienzos[self.lienzo_actual]["objetos"]
-        restantes = []
-        cambio = False
+    def borrar_en_punto(self, punto, anterior=None):
+        if self._borrado_actual is None:
+            self._borrado_actual = self._crear_trazo_borrador(punto)
+            self.lienzos[self.lienzo_actual]["objetos"].append(self._borrado_actual)
 
-        for objeto in objetos:
-            if objeto.get("tipo") == "trazo":
-                partes = self._trazo_sin_borrado(objeto, punto)
-                restantes.extend(partes)
-                cambio = cambio or len(partes) != 1 or partes[0] is not objeto
-            elif self._punto_toca_objeto(punto, objeto):
-                cambio = True
-            else:
-                restantes.append(objeto)
+        puntos = self._borrado_actual.setdefault("puntos", [])
+        tamano = max(self._borrado_actual.get("tamano", self.borrador), 1)
+        espaciado = max(tamano * 0.65, 8)
 
-        if cambio:
-            self.lienzos[self.lienzo_actual]["objetos"] = restantes
+        origen = anterior or (puntos[-1] if puntos else punto)
+        distancia = math.hypot(punto[0] - origen[0], punto[1] - origen[1])
+        pasos = max(int(distancia / espaciado), 1)
+
+        nuevos = []
+
+        for paso in range(1, pasos + 1):
+            t = paso / pasos
+            candidato = (
+                origen[0] + (punto[0] - origen[0]) * t,
+                origen[1] + (punto[1] - origen[1]) * t,
+            )
+
+            if not puntos or math.hypot(candidato[0] - puntos[-1][0], candidato[1] - puntos[-1][1]) >= espaciado:
+                puntos.append(candidato)
+                nuevos.append(candidato)
+
+        if nuevos:
             self.objeto_seleccionado = None
             self.objetos_seleccionados = []
-            self._redibujar_lienzo()
+            self._actualizar_borrado_canvas()
+            self._redibujar_overlay()
+        else:
+            self._redibujar_overlay()
+
+    def _crear_trazo_borrador(self, punto):
+        return {
+            "tipo": "borrado",
+            "puntos": [punto],
+            "tamano": self.borrador,
+            "usar_fondo": True,
+        }
 
     def _trazo_sin_borrado(self, objeto, punto):
         puntos = objeto.get("puntos", [])
@@ -1761,6 +1978,13 @@ class PizarraView:
         self._inicio = None
         self._ultimo = None
         self._trazo_actual = None
+        self._borrado_actual = None
+        self._borrado_canvas_inicio = None
+
+        if herramienta == "borrador":
+            self._cursor_activo = True
+            self._cursor_punto = self._punto_centro_visible()
+
         if self.responsive.is_mobile():
             self.herramientas_abiertas = False
         self.router.refrescar()
@@ -1801,6 +2025,21 @@ class PizarraView:
 
     def actualizar_borrador(self, valor):
         self.borrador = int(float(valor))
+
+        if self._borrado_actual is not None:
+            self._borrado_actual["tamano"] = self.borrador
+
+        if self.herramienta == "borrador":
+            self._cursor_activo = True
+
+            if not self._cursor_punto:
+                self._cursor_punto = self._punto_centro_visible()
+
+            if self._borrado_actual is not None:
+                self._actualizar_borrado_canvas()
+                self._redibujar_overlay()
+            else:
+                self._redibujar_overlay()
 
     def deseleccionar_actual(self, e=None):
         if (
@@ -1918,7 +2157,7 @@ class PizarraView:
         objetos = []
 
         for objeto in compacto.get("objetos", []):
-            if objeto.get("tipo") != "trazo":
+            if objeto.get("tipo") not in ("trazo", "borrado"):
                 objetos.append(objeto)
                 continue
 
@@ -1929,7 +2168,11 @@ class PizarraView:
                 continue
 
             filtrados = [puntos[0]]
-            distancia_minima = max(4.0, objeto.get("grosor", 3) * 0.9)
+            distancia_minima = (
+                max(4.0, objeto.get("tamano", self.borrador) * 0.24)
+                if objeto.get("tipo") == "borrado"
+                else max(4.0, objeto.get("grosor", 3) * 0.9)
+            )
 
             for punto in puntos[1:-1]:
                 ultimo = filtrados[-1]

@@ -5,6 +5,7 @@ import json
 import random
 import re
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 import flet as ft
@@ -22,10 +23,14 @@ from logica.diccionario_hebreo import (
     entradas_diccionario,
     fragmentos_con_diccionario,
 )
+from logica.tarjeta_biblica import (
+    datos_tarjeta_versiculo,
+    guardar_captura_tarjeta_base64,
+)
 from services.biblia_service import BibliaService
 from services.codificador_service import CodificadorService
 from ui.clipboard import copiar_al_portapapeles
-from ui.compartir import compartir_texto
+from ui.compartir import compartir_archivo, compartir_texto
 from ui.nombre_guardado import pedir_nombre_y_carpeta_guardado
 from ui.responsive import Responsive
 from ui.tema import (
@@ -1428,13 +1433,12 @@ class BibliaView:
 
         acciones = [
             ft.IconButton(icon=ft.Icons.FORMAT_COLOR_RESET, tooltip="Quitar color seleccionado", icon_color=TEXTO_SECUNDARIO, on_click=lambda e: self.quitar_color_objetivo()),
-            ft.IconButton(icon=ft.Icons.SAVE_ALT, tooltip="Guardar fragmento", icon_color=NARANJA_ACCENTO, on_click=lambda e: self.guardar_fragmento()),
+            ft.IconButton(icon=ft.Icons.SAVE_ALT, tooltip="Guardar", icon_color=NARANJA_ACCENTO, on_click=lambda e: self.dialog_guardar_biblia()),
             ft.IconButton(icon=ft.Icons.CONTENT_COPY, tooltip="Copiar capitulo", icon_color=AZUL_ACCENTO, on_click=lambda e: self.copiar_capitulo()),
             ft.IconButton(icon=ft.Icons.MENU_BOOK, tooltip="Diccionario hebreo", icon_color=VIOLETA_ACCENTO, on_click=lambda e: self.dialog_diccionario_hebreo()),
             ft.IconButton(icon=ft.Icons.RECORD_VOICE_OVER, tooltip="Ver palabras del Cordero", icon_color=COLOR_PALABRAS_CORDERO, on_click=lambda e: self.dialog_palabras_cordero()),
-            ft.IconButton(icon=ft.Icons.SELECT_ALL, tooltip="Seleccion multiple de versiculos", icon_color=NARANJA_ACCENTO if self.modo_compartir_multiple else TEXTO_SECUNDARIO, on_click=lambda e: self.toggle_modo_compartir_multiple()),
-            ft.IconButton(icon=ft.Icons.CLEAR_ALL, tooltip="Limpiar seleccion multiple", icon_color=TEXTO_SECUNDARIO, on_click=lambda e: self.limpiar_seleccion_multiple()),
-            ft.IconButton(icon=ft.Icons.SHARE, tooltip="Compartir seleccion", icon_color=VIOLETA_ACCENTO, on_click=lambda e: self.compartir_seleccion()),
+            ft.IconButton(icon=ft.Icons.SELECT_ALL, tooltip="Activar/desactivar seleccion multiple", icon_color=NARANJA_ACCENTO if self.modo_compartir_multiple or self.versos_compartir else TEXTO_SECUNDARIO, on_click=lambda e: self.toggle_modo_compartir_multiple()),
+            ft.IconButton(icon=ft.Icons.SHARE, tooltip="Compartir", icon_color=VIOLETA_ACCENTO, on_click=lambda e: self.dialog_compartir_biblia()),
             ft.IconButton(icon=ft.Icons.FILTER_ALT, tooltip="Ver marcados por color", icon_color=VERDE_ACCENTO, on_click=lambda e: self.dialog_versiculos_por_color()),
         ]
 
@@ -2050,6 +2054,11 @@ class BibliaView:
     def dialog_palabra_hebreo(self, entrada):
         def cerrar(e=None):
             dialog.open = False
+            try:
+                if dialog in self.page.overlay:
+                    self.page.overlay.remove(dialog)
+            except Exception:
+                pass
             self.page.update()
 
         dialog = ft.AlertDialog(
@@ -2239,14 +2248,75 @@ class BibliaView:
             for verso in versos
         )
 
-    def toggle_modo_compartir_multiple(self):
-        self.modo_compartir_multiple = not self.modo_compartir_multiple
+    def _referencia_versos(self, versos):
+        if not versos:
+            return ""
 
-        if self.modo_compartir_multiple:
+        if len(versos) == 1:
+            return versos[0]["referencia"]
+
+        primero = versos[0]
+        ultimo = versos[-1]
+
+        if primero["libro"] == ultimo["libro"] and primero["capitulo"] == ultimo["capitulo"]:
+            numeros = [verso["versiculo"] for verso in versos]
+            consecutivos = numeros == list(range(numeros[0], numeros[-1] + 1))
+
+            if consecutivos:
+                return f"{primero['libro']} {primero['capitulo']}:{primero['versiculo']}-{ultimo['versiculo']}"
+
+            return (
+                f"{primero['libro']} {primero['capitulo']}:"
+                + ", ".join(str(numero) for numero in numeros)
+            )
+
+        if primero["libro"] == ultimo["libro"]:
+            return (
+                f"{primero['libro']} "
+                f"{primero['capitulo']}:{primero['versiculo']}-"
+                f"{ultimo['capitulo']}:{ultimo['versiculo']}"
+            )
+
+        return f"{primero['referencia']} - {ultimo['referencia']}"
+
+    def _datos_texto_biblia_actual(self):
+        versos = self._versos_ordenados_para_compartir()
+
+        if versos:
+            return {
+                "referencia": self._referencia_versos(versos),
+                "texto": self._texto_versos_compartir(versos),
+                "versos": versos,
+            }
+
+        return self._datos_versiculo_activo()
+
+    def _datos_tarjeta_biblia_actual(self):
+        versos = self._versos_ordenados_para_compartir()
+
+        if versos:
+            return {
+                "referencia": self._referencia_versos(versos),
+                "texto": "\n".join(
+                    f"{verso['versiculo']}. {verso['texto']}"
+                    for verso in versos
+                ),
+                "versos": versos,
+            }
+
+        return self._datos_versiculo_activo()
+
+    def toggle_modo_compartir_multiple(self):
+        activar = not (self.modo_compartir_multiple or bool(self.versos_compartir))
+        self.modo_compartir_multiple = activar
+
+        if activar:
             self.verso_seleccionado = None
             self.objetivo_color = None
             mensaje = "Seleccion multiple activada. Toque versiculos para agregarlos o quitarlos."
         else:
+            self.versos_compartir.clear()
+            self.objetivo_color = None
             mensaje = "Seleccion multiple desactivada."
 
         self._snack(mensaje)
@@ -2258,9 +2328,50 @@ class BibliaView:
         self._snack("Seleccion multiple limpia.")
         self.router.refrescar()
 
-    def tocar_versiculo(self, verso):
+    def _actualizar_control_verso_multiple(self, evento, verso):
+        try:
+            contenedor = evento.control.content
+            resaltado = self.resaltados.get(verso)
+            seleccionado = self.verso_seleccionado == verso
+            seleccionado_multiple = verso in self.versos_compartir
+            verso_marcado = self._esta_marcado_para_color(verso)
+            color_fondo = self._hex_color(resaltado)
+
+            contenedor.bgcolor = (
+                color_fondo
+                if resaltado
+                else "#FFF7D6"
+                if seleccionado_multiple
+                else PERLA_VIOLETA
+                if seleccionado or verso_marcado
+                else ft.Colors.WHITE
+            )
+            contenedor.border = ft.Border.all(
+                2 if seleccionado or verso_marcado or seleccionado_multiple else 1,
+                NARANJA_ACCENTO
+                if seleccionado_multiple
+                else VIOLETA_IOS
+                if seleccionado or verso_marcado
+                else BORDER_MARRON
+                if self._es_blanco_borde(resaltado)
+                else ft.Colors.GREY_300,
+            )
+
+            fila = contenedor.content
+            if getattr(fila, "controls", None):
+                fila.controls[0].visible = seleccionado_multiple
+
+            contenedor.update()
+        except Exception:
+            self.router.refrescar()
+
+    def tocar_versiculo(self, verso, evento=None):
         if self.modo_compartir_multiple:
-            self.toggle_verso_compartir(verso)
+            self.toggle_verso_compartir(verso, refrescar=False)
+
+            if evento is not None:
+                self._actualizar_control_verso_multiple(evento, verso)
+
             return
 
         self.seleccionar_verso(verso)
@@ -2317,7 +2428,7 @@ class BibliaView:
 
             self.panel_lectura.controls.append(
                 ft.GestureDetector(
-                    on_tap=lambda e, v=vid: self.tocar_versiculo(v),
+                    on_tap=lambda e, v=vid: self.tocar_versiculo(v, e),
                     on_double_tap=lambda e, v=vid: self.doble_tap_verso(v),
                     on_long_press=lambda e, v=vid: self.elegir_modo_color_identificador(
                         self._clave_numero_verso(v)
@@ -3420,17 +3531,42 @@ class BibliaView:
             alcance="Versiculo",
         )
 
-    def guardar_fragmento(self):
+    def _datos_versiculo_activo(self):
         verso = self._verso_activo()
 
+        if not verso and len(self.versos_compartir) == 1:
+            verso = next(iter(self.versos_compartir))
+
         if not verso:
-            self._snack("Seleccione un versiculo.")
-            return
+            return None
 
         partes = verso.split("|")
+
+        if len(partes) != 3:
+            return None
+
         libro, capitulo, versiculo = partes[0], int(partes[1]), int(partes[2])
         texto = self._texto_versiculo(libro, capitulo, versiculo)
         referencia = f"{libro} {capitulo}:{versiculo}"
+
+        return {
+            "id": verso,
+            "libro": libro,
+            "capitulo": capitulo,
+            "versiculo": versiculo,
+            "referencia": referencia,
+            "texto": texto,
+        }
+
+    def guardar_fragmento(self):
+        datos = self._datos_texto_biblia_actual()
+
+        if not datos:
+            self._snack("Seleccione un versiculo.")
+            return
+
+        texto = datos["texto"]
+        referencia = datos["referencia"]
 
         def guardar_con_nombre(nombre, carpeta=None):
             destino = carpeta or state.carpetas.obtener_por_nombre("FRAGMENTOS BIBLICOS")
@@ -3459,6 +3595,596 @@ class BibliaView:
             guardar_con_nombre,
             "Se guardara en FRAGMENTOS BIBLICOS.",
         )
+
+    def _cerrar_flotante_biblia(self, control):
+        if control is None:
+            return
+
+        try:
+            control.open = False
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self.page, "close"):
+                self.page.close(control)
+        except Exception:
+            pass
+
+        try:
+            while control in self.page.overlay:
+                self.page.overlay.remove(control)
+        except Exception:
+            pass
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _limpiar_flotantes_biblia(self):
+        titulos_biblia = {
+            "Guardar",
+            "Compartir",
+            "Guardar tarjeta",
+            "Tarjeta del versiculo",
+            "Tarjeta del versículo",
+            "Guardado correctamente",
+        }
+
+        for control in list(getattr(self.page, "overlay", [])):
+            titulo = ""
+
+            try:
+                title = getattr(control, "title", None)
+                titulo = getattr(title, "value", "") or getattr(title, "text", "") or ""
+            except Exception:
+                titulo = ""
+
+            if getattr(control, "data", None) == "biblia_flotante" or titulo in titulos_biblia:
+                self._cerrar_flotante_biblia(control)
+
+    def _crear_flotante_biblia(self, titulo, contenido, acciones, ancho=None, alto=None):
+        ancho_page = getattr(self.page, "width", None) or 760
+        alto_page = getattr(self.page, "height", None) or 720
+        ancho_modal = min(ancho or 620, max(300, ancho_page - 32))
+        alto_modal = min(alto or (alto_page - 80), max(320, alto_page - 40))
+        return ft.Container(
+            data="biblia_flotante",
+            width=ancho_page,
+            height=alto_page,
+            bgcolor=ft.Colors.with_opacity(0.62, ft.Colors.BLACK),
+            alignment=ft.Alignment(0, 0),
+            content=ft.Container(
+                width=ancho_modal,
+                height=alto_modal,
+                padding=ft.Padding(24, 22, 24, 18),
+                border_radius=26,
+                bgcolor=PERLA_PANEL,
+                shadow=sombra_suave(),
+                content=ft.Column(
+                    spacing=14,
+                    controls=[
+                        ft.Text(
+                            titulo,
+                            size=24,
+                            weight=ft.FontWeight.W_500,
+                            color=TEXTO_PRINCIPAL,
+                        ),
+                        ft.Container(
+                            expand=True,
+                            alignment=ft.Alignment(0, 0),
+                            content=contenido,
+                        ),
+                        ft.Row(
+                            alignment=ft.MainAxisAlignment.END,
+                            spacing=10,
+                            controls=acciones,
+                        ),
+                    ],
+                ),
+            ),
+        )
+
+    def dialog_guardar_biblia(self):
+        datos = self._datos_texto_biblia_actual()
+
+        if not datos:
+            self._snack("Seleccione un versiculo.")
+            return
+
+        self._limpiar_flotantes_biblia()
+        dialog_ref = {"control": None}
+
+        def cerrar(e=None):
+            self._cerrar_flotante_biblia(dialog_ref["control"])
+
+        def guardar_texto(e=None):
+            cerrar()
+            self.guardar_fragmento()
+
+        def guardar_imagen(e=None):
+            cerrar()
+            self.guardar_tarjeta_versiculo()
+
+        dialog = self._crear_flotante_biblia(
+            "Guardar",
+            ft.Text("Elija como quiere guardar el versiculo seleccionado."),
+            [
+                ft.ElevatedButton("Texto", icon=ft.Icons.TEXT_SNIPPET, on_click=guardar_texto),
+                ft.ElevatedButton("Imagen de tarjeta", icon=ft.Icons.IMAGE, on_click=guardar_imagen),
+                ft.TextButton("Cancelar", on_click=cerrar),
+            ],
+            ancho=520,
+            alto=260,
+        )
+
+        dialog_ref["control"] = dialog
+        self.page.overlay.append(dialog)
+        self.page.update()
+
+    def dialog_compartir_biblia(self):
+        datos = self._datos_tarjeta_biblia_actual()
+        versos = self._versos_ordenados_para_compartir()
+
+        if not datos and not versos:
+            self._snack("Seleccione un versiculo.")
+            return
+
+        self._limpiar_flotantes_biblia()
+        dialog_ref = {"control": None}
+
+        def cerrar(e=None):
+            self._cerrar_flotante_biblia(dialog_ref["control"])
+
+        def compartir_texto_accion(e=None):
+            cerrar()
+            self.compartir_seleccion()
+
+        def compartir_imagen(e=None):
+            if not datos:
+                self._snack("Seleccione al menos un versiculo.")
+                return
+
+            cerrar()
+            self.compartir_tarjeta_versiculo()
+
+        acciones = [
+            ft.ElevatedButton("Texto", icon=ft.Icons.TEXT_SNIPPET, on_click=compartir_texto_accion),
+        ]
+
+        if datos:
+            acciones.append(
+                ft.ElevatedButton("Imagen de tarjeta", icon=ft.Icons.IMAGE, on_click=compartir_imagen)
+            )
+
+        acciones.append(ft.TextButton("Cancelar", on_click=cerrar))
+
+        dialog = self._crear_flotante_biblia(
+            "Compartir",
+            ft.Text("Elija como quiere compartir la seleccion."),
+            acciones,
+            ancho=520,
+            alto=260,
+        )
+
+        dialog_ref["control"] = dialog
+        self.page.overlay.append(dialog)
+        self.page.update()
+
+    def _texto_dorado_tarjeta(self, texto, size, max_lines=None):
+        return ft.Text(
+            texto,
+            text_align=ft.TextAlign.CENTER,
+            max_lines=max_lines,
+            overflow=ft.TextOverflow.ELLIPSIS,
+            style=ft.TextStyle(
+                size=size,
+                weight=ft.FontWeight.BOLD,
+                color="#FFE47A",
+                shadow=[
+                    ft.BoxShadow(
+                        blur_radius=16,
+                        color=ft.Colors.with_opacity(0.70, "#E8AA23"),
+                        offset=ft.Offset(0, 0),
+                    ),
+                    ft.BoxShadow(
+                        blur_radius=3,
+                        color=ft.Colors.with_opacity(0.55, "#4A2100"),
+                        offset=ft.Offset(2, 3),
+                    ),
+                ],
+            ),
+        )
+
+    def _control_tarjeta_versiculo(self, datos, ancho):
+        ancho = max(300, min(float(ancho or 720), 760))
+        alto = ancho * 2 / 3
+        largo_texto = len(datos["texto"])
+        ref_size = max(24, min(44, ancho * 0.058))
+        texto_size = max(
+            15,
+            min(
+                34,
+                ancho * (0.052 if largo_texto < 130 else 0.044 if largo_texto < 230 else 0.036),
+            ),
+        )
+
+        return ft.Container(
+            width=ancho,
+            height=alto,
+            border_radius=18,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            shadow=sombra_suave(),
+            content=ft.Stack(
+                controls=[
+                    ft.Image(
+                        src="tarjeta_versiculo_base.png",
+                        width=ancho,
+                        height=alto,
+                        fit=ft.BoxFit.COVER,
+                    ),
+                    ft.Container(
+                        left=ancho * 0.10,
+                        right=ancho * 0.10,
+                        top=alto * 0.11,
+                        content=self._texto_dorado_tarjeta(datos["referencia"], ref_size, max_lines=1),
+                    ),
+                    ft.Container(
+                        left=ancho * 0.12,
+                        right=ancho * 0.12,
+                        top=alto * 0.23,
+                        height=2,
+                        bgcolor=ft.Colors.with_opacity(0.82, "#FFE47A"),
+                    ),
+                    ft.Container(
+                        left=ancho * 0.09,
+                        right=ancho * 0.09,
+                        top=alto * 0.34,
+                        content=self._texto_dorado_tarjeta(datos["texto"], texto_size, max_lines=6),
+                    ),
+                ],
+            ),
+        )
+
+    def _capturar_tarjeta_ref(self, screenshot_ref, datos, incluir_base64=False):
+        screenshot = screenshot_ref.current
+
+        if screenshot is not None:
+            try:
+                captura = screenshot.capture(pixel_ratio=2, delay=100)
+
+                if captura:
+                    return guardar_captura_tarjeta_base64(
+                        datos["referencia"],
+                        captura,
+                        incluir_base64=incluir_base64,
+                    )
+            except Exception:
+                pass
+
+        return datos_tarjeta_versiculo(
+            datos["referencia"],
+            datos["texto"],
+            incluir_base64=incluir_base64,
+        )
+
+    def _guardar_registro_tarjeta_versiculo(self, datos, imagen, nombre, carpeta=None):
+        destino = carpeta or state.carpetas.obtener_por_nombre("FRAGMENTOS BIBLICOS")
+        registro = {
+            "tipo": "fragmento_biblico",
+            "subtipo": "tarjeta_versiculo",
+            "carpeta": destino["nombre"] if destino else "FRAGMENTOS BIBLICOS",
+            "carpeta_id": destino["id"] if destino else 3,
+            "nombre": nombre or f"Tarjeta {datos['referencia']}",
+            "palabra": nombre or datos["referencia"],
+            "referencia": datos["referencia"],
+            "alfabeto": "",
+            "suma": datos["texto"],
+            "resultado": "Imagen",
+            "contenido": datos["texto"],
+            "imagen_archivo": imagen["archivo"],
+            "imagen_base64": imagen.get("base64", ""),
+            "imagen_mime": imagen["mime"],
+            "imagen_extension": imagen["extension"],
+            "fecha": datetime.now().isoformat(timespec="seconds"),
+        }
+        state.guardados.guardar(registro)
+        state.carpeta_guardados_preferida = registro["carpeta_id"]
+        return registro
+
+    def dialog_tarjeta_versiculo(self, modo=None):
+        datos = self._datos_tarjeta_biblia_actual()
+
+        if not datos:
+            self._snack("Seleccione un versiculo.")
+            return
+
+        self._limpiar_flotantes_biblia()
+        ancho_page = getattr(self.page, "width", None) or 760
+        alto_page = getattr(self.page, "height", None) or 720
+        ancho_tarjeta = min(560, max(300, ancho_page - 96))
+        alto_contenido = min(620, max(420, alto_page - 150))
+        screenshot_ref = ft.Ref[ft.Screenshot]()
+        raiz_fragmentos = (
+            state.carpetas.obtener_por_nombre("FRAGMENTOS BIBLICOS")
+            if state.carpetas
+            else None
+        )
+        carpeta_destino = {"valor": raiz_fragmentos}
+        dialogos_tarjeta = {"principal": None, "selector": None}
+
+        def crear_flotante(titulo, contenido, acciones, ancho=None, alto=None):
+            return self._crear_flotante_biblia(
+                titulo,
+                contenido,
+                acciones,
+                ancho=ancho,
+                alto=alto,
+            )
+
+        def cerrar_flotante(control):
+            self._cerrar_flotante_biblia(control)
+
+        def cerrar(e=None):
+            cerrar_flotante(dialogos_tarjeta.get("selector"))
+            cerrar_flotante(dialogos_tarjeta.get("principal"))
+            dialogos_tarjeta["selector"] = None
+            dialogos_tarjeta["principal"] = None
+            self.page.update()
+
+        def elegir_carpeta(e=None):
+            if not state.carpetas or not raiz_fragmentos:
+                self._snack("No se encontro la carpeta FRAGMENTOS BIBLICOS.")
+                return
+
+            expandidas = {raiz_fragmentos["id"]}
+            seleccion = {"valor": carpeta_destino["valor"] or raiz_fragmentos}
+            lista = ft.ListView(height=320, spacing=2, auto_scroll=False)
+            nombre_dialogo = ft.TextField(
+                label="Nombre",
+                value=f"Tarjeta {datos['referencia']}",
+                dense=True,
+                on_tap_outside=lambda ev: ocultar_teclado(self.page, ev.control),
+            )
+            destino_dialogo = ft.Text("", size=12, color=TEMA_TEXTO_SECUNDARIO)
+            estado_dialogo = ft.Text("", size=12, color=ft.Colors.RED_700)
+
+            def ruta_seleccionada():
+                carpeta = seleccion["valor"] or raiz_fragmentos
+                return state.carpetas.obtener_ruta_texto(carpeta["id"])
+
+            def renderizar():
+                lista.controls.clear()
+
+                def item(carpeta, nivel):
+                    hijos = state.carpetas.obtener_hijos(carpeta["id"])
+                    seleccionada = (
+                        seleccion["valor"]
+                        and seleccion["valor"]["id"] == carpeta["id"]
+                    )
+                    icono = (
+                        ft.Icons.EXPAND_MORE
+                        if carpeta["id"] in expandidas
+                        else ft.Icons.CHEVRON_RIGHT
+                    )
+
+                    def alternar(ev=None, c=carpeta):
+                        if not hijos:
+                            seleccion["valor"] = c
+                        elif c["id"] in expandidas:
+                            expandidas.remove(c["id"])
+                        else:
+                            expandidas.add(c["id"])
+                        renderizar()
+
+                    def seleccionar(ev=None, c=carpeta):
+                        seleccion["valor"] = c
+                        renderizar()
+
+                    return ft.Container(
+                        bgcolor=PERLA_VIOLETA if seleccionada else None,
+                        border_radius=8,
+                        padding=ft.Padding(left=4 + nivel * 18, top=3, right=4, bottom=3),
+                        content=ft.Row(
+                            spacing=4,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.IconButton(
+                                    icon=icono if hijos else ft.Icons.FOLDER_OUTLINED,
+                                    icon_size=18,
+                                    width=32,
+                                    height=32,
+                                    on_click=alternar,
+                                ),
+                                ft.GestureDetector(
+                                    expand=True,
+                                    on_tap=seleccionar,
+                                    content=ft.Container(
+                                        height=34,
+                                        alignment=ft.Alignment(-1, 0),
+                                        content=ft.Text(
+                                            carpeta["nombre"],
+                                            weight=(
+                                                ft.FontWeight.BOLD
+                                                if seleccionada
+                                                else ft.FontWeight.NORMAL
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        ),
+                    )
+
+                def rama(carpeta, nivel=0):
+                    lista.controls.append(item(carpeta, nivel))
+
+                    if carpeta["id"] not in expandidas:
+                        return
+
+                    for hija in state.carpetas.obtener_hijos(carpeta["id"]):
+                        rama(hija, nivel + 1)
+
+                rama(raiz_fragmentos)
+                destino_dialogo.value = f"Destino: {ruta_seleccionada()}"
+
+                try:
+                    lista.update()
+                    destino_dialogo.update()
+                except (RuntimeError, AssertionError):
+                    pass
+
+            def cerrar_selector(ev=None):
+                cerrar_flotante(selector)
+                dialogos_tarjeta["selector"] = None
+                self.page.update()
+
+            def aceptar(ev=None):
+                nombre = (nombre_dialogo.value or f"Tarjeta {datos['referencia']}").strip()
+                carpeta = seleccion["valor"] or raiz_fragmentos
+                boton_confirmar.disabled = True
+                estado_dialogo.value = "Guardando tarjeta..."
+                estado_dialogo.color = ft.Colors.GREY_700
+                self.page.update()
+
+                imagen = capturar(incluir_base64=True)
+
+                if not imagen:
+                    boton_confirmar.disabled = False
+                    estado_dialogo.value = "No se pudo preparar la tarjeta."
+                    estado_dialogo.color = ft.Colors.RED_700
+                    self.page.update()
+                    return
+
+                try:
+                    self._guardar_registro_tarjeta_versiculo(
+                        datos,
+                        imagen,
+                        nombre,
+                        carpeta,
+                    )
+                except Exception as error:
+                    boton_confirmar.disabled = False
+                    estado_dialogo.value = f"No se pudo guardar: {error}"
+                    estado_dialogo.color = ft.Colors.RED_700
+                    self.page.update()
+                    return
+
+                cerrar_flotante(selector)
+                cerrar_flotante(dialog)
+                dialogos_tarjeta["selector"] = None
+                dialogos_tarjeta["principal"] = None
+                self.page.update()
+                self._snack(f"{nombre} fue guardado correctamente.")
+
+            boton_confirmar = ft.ElevatedButton(
+                "Guardar",
+                icon=ft.Icons.SAVE_ALT,
+                on_click=aceptar,
+            )
+
+            selector = crear_flotante(
+                "Guardar tarjeta",
+                ft.Column(
+                    spacing=10,
+                    controls=[
+                        nombre_dialogo,
+                        destino_dialogo,
+                        ft.Container(
+                            expand=True,
+                            border=ft.Border.all(1, PERLA_BORDE),
+                            border_radius=10,
+                            padding=6,
+                            content=lista,
+                        ),
+                        estado_dialogo,
+                    ],
+                ),
+                [
+                    ft.TextButton("Cancelar", on_click=cerrar_selector),
+                    boton_confirmar,
+                ],
+                ancho=468,
+                alto=min(595, max(430, alto_page - 90)),
+            )
+
+            self.page.overlay.append(selector)
+            dialogos_tarjeta["selector"] = selector
+            renderizar()
+            self.page.update()
+
+        def capturar(incluir_base64=False):
+            try:
+                return self._capturar_tarjeta_ref(
+                    screenshot_ref,
+                    datos,
+                    incluir_base64=incluir_base64,
+                )
+            except Exception as error:
+                self._snack(f"No se pudo preparar la tarjeta: {error}")
+                return None
+
+        def guardar_imagen(e=None):
+            elegir_carpeta(e)
+
+        def compartir_imagen(e=None):
+            imagen = capturar(incluir_base64=False)
+
+            if not imagen:
+                return
+
+            cerrar()
+            compartir_archivo(
+                self.page,
+                imagen["archivo"],
+                f"Tarjeta {datos['referencia']}",
+                imagen["mime"],
+            )
+
+        tarjeta = ft.Screenshot(
+            ref=screenshot_ref,
+            content=self._control_tarjeta_versiculo(datos, ancho_tarjeta),
+        )
+        controles = [tarjeta]
+
+        acciones = [ft.TextButton("Cerrar", on_click=cerrar)]
+
+        if modo in (None, "guardar"):
+            acciones.append(
+                ft.ElevatedButton("Guardar", icon=ft.Icons.SAVE_ALT, on_click=guardar_imagen)
+            )
+
+        if modo in (None, "compartir"):
+            acciones.append(
+                ft.ElevatedButton("Compartir", icon=ft.Icons.SHARE, on_click=compartir_imagen)
+            )
+
+        dialog = crear_flotante(
+            "Tarjeta del versiculo",
+            ft.Container(
+                width=ancho_tarjeta,
+                content=ft.Column(
+                    scroll=ft.ScrollMode.AUTO,
+                    spacing=12,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=controles,
+                ),
+            ),
+            acciones,
+            ancho=ancho_tarjeta + 64,
+            alto=alto_contenido,
+        )
+
+        self.page.overlay.append(dialog)
+        dialogos_tarjeta["principal"] = dialog
+        self.page.update()
+
+    def guardar_tarjeta_versiculo(self):
+        self.dialog_tarjeta_versiculo(modo="guardar")
+
+    def compartir_tarjeta_versiculo(self):
+        self.dialog_tarjeta_versiculo(modo="compartir")
 
     def _guardar_fragmento_legacy(self, referencia, texto):
         state.guardados.guardar(
@@ -3725,6 +4451,16 @@ class BibliaView:
     def _mostrar_guardado_correcto(self, referencia):
         def cerrar(e=None):
             dialog.open = False
+            try:
+                if hasattr(self.page, "close"):
+                    self.page.close(dialog)
+            except Exception:
+                pass
+            try:
+                if dialog in self.page.overlay:
+                    self.page.overlay.remove(dialog)
+            except Exception:
+                pass
             self.page.update()
 
         dialog = ft.AlertDialog(

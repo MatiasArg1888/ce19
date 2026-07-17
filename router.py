@@ -6,16 +6,11 @@ from services.rutas_service import RutasService
 
 from ui.tema import (
     AZUL,
-    AZUL_SUAVE,
     BLANCO,
-    DORADO_IOS,
     FONDO_APP,
     FONDO_APP_IMAGEN,
-    GRIS_SUAVE,
     NARANJA,
-    NARANJA_SUAVE,
     PERLA_BORDE,
-    PERLA_PANEL,
     PERLA_VIOLETA,
     SUPERFICIE,
     TEXTO,
@@ -24,12 +19,10 @@ from ui.tema import (
     VIOLETA,
     VIOLETA_IOS,
     VIOLETA_SUAVE,
-    banda_colores,
     icono_estrella,
     opacidad,
     sombra_color,
     sombra_suave,
-    swatches_colores,
 )
 
 
@@ -41,6 +34,7 @@ class Router:
         self.root = None
         self.ruta_actual = None
         self._refrescando = False
+        self.menu_lateral_abierto = True
         self.orden_rutas = RutasService.orden()
         self.meta_rutas = {ruta: (RutasService.label(ruta), RutasService.icono(ruta)) for ruta in self.orden_rutas}
 
@@ -273,7 +267,7 @@ class Router:
             border_radius=24,
             shadow=sombra_suave(0.055, 18, 0, 5),
             content=ft.Row(
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                alignment=ft.MainAxisAlignment.START,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
                     ft.Row(
@@ -284,13 +278,12 @@ class Router:
                             ft.Text(label, size=17, weight=ft.FontWeight.BOLD, color=TEXTO),
                         ],
                     ),
-                    swatches_colores(9, suave=True),
                 ],
             ),
         )
 
     def _menu_lateral(self):
-        compacto = self._ancho() < 1100
+        compacto = not self.menu_lateral_abierto
         return ft.Container(
             width=86 if compacto else 236,
             padding=ft.Padding(left=10, top=10, right=0, bottom=10),
@@ -307,43 +300,42 @@ class Router:
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     controls=[
                         self._encabezado_menu(compacto),
-                        ft.Divider(height=12, color=opacidad(0.65, PERLA_BORDE)),
+                        ft.Divider(height=8, color=opacidad(0.65, PERLA_BORDE)),
                         ft.Column(spacing=4, controls=[self._item_menu(ruta, compacto) for ruta in self.orden_rutas]),
                         ft.Container(expand=True),
-                        self._firma_menu(compacto),
                     ],
                 ),
             ),
         )
 
     def _encabezado_menu(self, compacto):
+        boton_toggle = ft.IconButton(
+            icon=ft.Icons.MENU_OPEN if compacto else ft.Icons.CHEVRON_LEFT,
+            tooltip="Abrir menu" if compacto else "Cerrar menu",
+            icon_color=TEXTO_MUTED,
+            on_click=self._alternar_menu_lateral,
+        )
+
         if compacto:
-            return ft.Column(tight=True, spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER, controls=[icono_estrella(42), swatches_colores(7, suave=True)])
+            return ft.Column(
+                tight=True,
+                spacing=8,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    boton_toggle,
+                    icono_estrella(42),
+                ],
+            )
 
         return ft.Column(
             tight=True,
-            spacing=8,
-            horizontal_alignment=ft.CrossAxisAlignment.START,
+            spacing=10,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
+                ft.Row(alignment=ft.MainAxisAlignment.END, controls=[boton_toggle]),
                 icono_estrella(42),
                 ft.Text("Código Escondido", size=16, weight=ft.FontWeight.BOLD, color=TEXTO, text_align=ft.TextAlign.CENTER),
-                ft.Container(
-                    padding=ft.Padding(left=12, top=4, right=12, bottom=4),
-                    bgcolor=NARANJA_SUAVE,
-                    border_radius=99,
-                    content=ft.Text("19", size=15, weight=ft.FontWeight.BOLD, color=NARANJA),
-                ),
-                swatches_colores(9, suave=True),
             ],
-        )
-
-    def _firma_menu(self, compacto):
-        return ft.Container(
-            padding=ft.Padding(left=8, top=7, right=8, bottom=7),
-            bgcolor=opacidad(0.72, GRIS_SUAVE),
-            border=ft.Border.all(1, opacidad(0.65, PERLA_BORDE)),
-            border_radius=8,
-            content=ft.Text("CE19" if compacto else "Listo", size=11, color=TEXTO_MUTED, text_align=ft.TextAlign.CENTER),
         )
 
     def _item_menu(self, ruta, compacto=False):
@@ -370,6 +362,10 @@ class Router:
                 ],
             ),
         )
+
+    def _alternar_menu_lateral(self, e=None):
+        self.menu_lateral_abierto = not self.menu_lateral_abierto
+        self.refrescar()
 
     def _cambiar_desde_menu_lateral(self, e):
         indice = e.control.selected_index
