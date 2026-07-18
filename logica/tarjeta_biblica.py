@@ -7,8 +7,11 @@ from core.rutas import RAIZ_PROYECTO, ruta_exportacion
 
 
 BASE_TARJETA = RAIZ_PROYECTO / "assets" / "tarjeta_versiculo_base.png"
+# El modulo se extrae al almacenamiento local de Python en Android, mientras
+# que los assets visuales permanecen dentro del paquete Flutter. Por eso la
+# fuente debe vivir junto al modulo que compone el JPG.
 FUENTE_TARJETA_NEGRITA = (
-    RAIZ_PROYECTO / "assets" / "fonts" / "DejaVuSerif-Bold.ttf"
+    Path(__file__).resolve().parent / "recursos" / "DejaVuSerif-Bold.ttf"
 )
 ANCHO_TARJETA = 1536
 ALTO_TARJETA = 1024
