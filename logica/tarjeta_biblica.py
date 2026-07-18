@@ -3,15 +3,16 @@ import re
 import time
 from pathlib import Path
 
-from core.rutas import RAIZ_PROYECTO, ruta_exportacion
+from core.rutas import ruta_exportacion
 
 
-BASE_TARJETA = RAIZ_PROYECTO / "assets" / "tarjeta_versiculo_base.png"
 # El modulo se extrae al almacenamiento local de Python en Android, mientras
 # que los assets visuales permanecen dentro del paquete Flutter. Por eso la
-# fuente debe vivir junto al modulo que compone el JPG.
+# imagen base y la fuente deben vivir junto al modulo que compone el JPG.
+RECURSOS_TARJETA = Path(__file__).resolve().parent / "recursos"
+BASE_TARJETA = RECURSOS_TARJETA / "tarjeta_versiculo_base.png"
 FUENTE_TARJETA_NEGRITA = (
-    Path(__file__).resolve().parent / "recursos" / "DejaVuSerif-Bold.ttf"
+    RECURSOS_TARJETA / "DejaVuSerif-Bold.ttf"
 )
 ANCHO_TARJETA = 1536
 ALTO_TARJETA = 1024

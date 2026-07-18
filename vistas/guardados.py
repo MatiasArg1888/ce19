@@ -48,7 +48,7 @@ class GuardadosView:
         self.estadisticas_service = EstadisticasService(self.guardados, self.carpetas)
         self.busqueda_global_service = BusquedaGlobalService(self.guardados, self.carpetas)
         self.mantenimiento_service = MantenimientoService()
-        self.modo_cuadricula = False
+        self.modo_cuadricula = True
         self.modo_seleccion_multiple = False
         self.file_picker_excel = None
         self.file_picker_tarjeta = None
@@ -66,8 +66,8 @@ class GuardadosView:
         self.filtro_tipo = 'Todos'
         self.orden_guardados = 'Antiguos'
         self.boton_vista = ft.IconButton(
-            icon=ft.Icons.GRID_VIEW,
-            tooltip='cambiar vista',
+            icon=ft.Icons.VIEW_LIST,
+            tooltip='Ver como lista',
             on_click=self.cambiar_vista
         )
         self.campo_busqueda = ft.TextField(
@@ -111,8 +111,8 @@ class GuardadosView:
             on_click=self.eliminar_carpeta,
         )
         self.boton_vista = ft.IconButton(
-            icon=ft.Icons.GRID_VIEW,
-            tooltip='Cambiar vista',
+            icon=ft.Icons.VIEW_LIST,
+            tooltip='Ver como lista',
             on_click=self.cambiar_vista
         )
         self.boton_seleccion_multiple = ft.IconButton(
@@ -1529,6 +1529,44 @@ class GuardadosView:
             return str(registro.get("resultado") or "")
 
         return str(registro.get("resultado", ""))
+
+    def etiqueta_tipo_registro(self, registro):
+        tipo = registro.get("tipo", "tarjeta")
+
+        if registro.get("subtipo") == "tarjeta_versiculo":
+            return "Tarjeta biblica"
+
+        etiquetas = {
+            "fragmento_biblico": "Fragmento biblico",
+            "pizarra": "Pizarra",
+            "analisis_colores": "Analisis de colores",
+            "tiempo": "Consulta de tiempo",
+            "calculo_biblico": "Calculo biblico",
+            "tarjeta": "Tarjeta",
+        }
+        return etiquetas.get(tipo, "Archivo guardado")
+
+    def fecha_corta_registro(self, registro):
+        fecha = str(registro.get("fecha") or "").strip()
+
+        if not fecha:
+            return "Sin fecha"
+
+        return fecha.replace("T", " ")[:16]
+
+    def _vista_previa_cuadricula(self, registro):
+        tipo = registro.get("tipo", "tarjeta")
+
+        if tipo == "pizarra" or registro.get("subtipo") == "tarjeta_versiculo":
+            return self.preview_registro(registro)
+
+        return ft.Container(
+            height=90,
+            alignment=ft.Alignment(0, 0),
+            bgcolor=ft.Colors.with_opacity(0.05, VIOLETA_IOS),
+            border_radius=10,
+            content=self.icono_registro(registro, grande=True),
+        )
 
     def texto_previsualizacion(self, registro, size=13, max_lines=2, color=None):
         return ft.Text(
@@ -3442,112 +3480,91 @@ class GuardadosView:
     # CREAR TARJETA CUADRADA
     # ======================================                            
     def crear_tarjeta_cuadrada(self, registro):
-
         seleccionada = self.esta_seleccionado(registro)
 
-        return ft.Card(
-
-                elevation=4,
-
-                content=ft.Container(
-
-                    width=220,
-                    height=220,
-
-                    padding=15,
-                    clip_behavior=ft.ClipBehavior.HARD_EDGE,
-
-                    bgcolor=(
-                        PERLA_VIOLETA
-                        if seleccionada
-                        else "#FFFFFF"
-                    ),
-
-                    border=ft.Border.all(
-                        2 if seleccionada else 1,
-                        ft.Colors.BLUE
-                        if seleccionada
-                        else "#E8E0EC"
-                    ),
-
-                    border_radius=12,
-
-                    content=ft.Column(
-
+        return ft.Container(
+            width=250,
+            height=300,
+            padding=12,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            bgcolor=PERLA_VIOLETA if seleccionada else SUPERFICIE_PERLADA,
+            border=ft.Border.all(
+                2 if seleccionada else 1,
+                VIOLETA_IOS if seleccionada else PERLA_BORDE,
+            ),
+            border_radius=14,
+            shadow=sombra_suave(0.05, 14, 0, 4),
+            content=ft.Column(
+                spacing=8,
+                controls=[
+                    ft.Row(
                         spacing=8,
-
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-
-                            ft.Row(
-                                alignment=
-                                ft.MainAxisAlignment.SPACE_BETWEEN,
-
-                                controls=[
-
-                                    ft.Checkbox(
-                                        visible=self.modo_seleccion_multiple,
-                                        value=seleccionada,
-                                        on_change=lambda e, r=registro:
-                                            self.toggle_seleccion_multiple(r),
-                                    ),
-
-                                    self._area_click_registro(
-                                        registro,
-                                        self.icono_registro(registro, grande=True),
-                                    ),
-
-                                    self._acciones_registro_inline(registro, compacto=True)
-                                ]
+                            ft.Checkbox(
+                                visible=self.modo_seleccion_multiple,
+                                value=seleccionada,
+                                on_change=lambda e, r=registro: self.toggle_seleccion_multiple(r),
                             ),
-
-                            self._area_click_registro(
-                                registro,
-                                ft.Column(
-                                    spacing=8,
-                                    controls=[
-                                        ft.Text(
-                                            self.titulo_registro(registro),
-                                            size=18,
-                                            weight=ft.FontWeight.BOLD,
-                                            max_lines=2,
-                                            overflow=ft.TextOverflow.ELLIPSIS,
-                                        ),
-                                        self.texto_previsualizacion(
-                                            registro,
-                                            size=13,
-                                            max_lines=4,
-                                        ),
-                                        ft.Text(
-                                            f'Resultado: {self.resultado_registro(registro)}',
-                                            size=16,
-                                            weight=ft.FontWeight.BOLD,
-                                            max_lines=2,
-                                            overflow=ft.TextOverflow.ELLIPSIS,
-                                        ),
-                                        ft.Text(
-                                            registro.get("referencia", ""),
-                                            size=12,
-                                            color=ft.Colors.GREY_700,
-                                            max_lines=2,
-                                            overflow=ft.TextOverflow.ELLIPSIS,
-                                        ),
-                                    ],
+                            self.icono_registro(registro),
+                            ft.Text(
+                                self.etiqueta_tipo_registro(registro),
+                                expand=True,
+                                size=12,
+                                color=TEXTO_SECUNDARIO,
+                                weight=ft.FontWeight.BOLD,
+                                max_lines=1,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                        ],
+                    ),
+                    self._area_click_registro(
+                        registro,
+                        self._vista_previa_cuadricula(registro),
+                    ),
+                    self._area_click_registro(
+                        registro,
+                        ft.Column(
+                            tight=True,
+                            spacing=3,
+                            controls=[
+                                ft.Text(
+                                    self.titulo_registro(registro),
+                                    size=16,
+                                    weight=ft.FontWeight.BOLD,
+                                    max_lines=1,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
-                            )
-
-                        ]
-                    )
-                )
-            )
+                                ft.Text(
+                                    self.fecha_corta_registro(registro),
+                                    size=11,
+                                    color=TEXTO_SECUNDARIO,
+                                ),
+                            ],
+                        ),
+                    ),
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.END,
+                        controls=[
+                            ft.TextButton(
+                                "Abrir",
+                                icon=ft.Icons.OPEN_IN_NEW,
+                                on_click=lambda e, r=registro: self.abrir_detalle(r),
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        )
     # ======================================
     # CREAR CUADRICULA
     # ======================================
     def crear_cuadricula(self, registros):
         return ft.GridView(
             expand=True,
-            max_extent=240,
-            spacing=10,
-            run_spacing=10,
+            max_extent=270,
+            spacing=14,
+            run_spacing=14,
             controls=[
                 self.crear_tarjeta_cuadrada(registro)
                 for registro in registros
@@ -3560,89 +3577,85 @@ class GuardadosView:
     def crear_lista(self, registros):
         return ft.ListView(
             expand=True,
-            spacing=2,
-
+            spacing=8,
             controls=[
                 ft.Container(
-                    padding=8,
-                    border_radius=6,
+                    padding=10,
+                    border_radius=10,
                     clip_behavior=ft.ClipBehavior.HARD_EDGE,
-                    bgcolor=(
-                        PERLA_VIOLETA
-                        if (
-                            self.esta_seleccionado(registro)
-                        )
-                        else "#FFFFFF"
+                    bgcolor=(PERLA_VIOLETA if self.esta_seleccionado(registro) else SUPERFICIE_PERLADA),
+                    border=ft.Border.all(
+                        2 if self.esta_seleccionado(registro) else 1,
+                        VIOLETA_IOS if self.esta_seleccionado(registro) else PERLA_BORDE,
                     ),
-
                     content=ft.Row(
-                            spacing=15,
-                            vertical_alignment=
-                            ft.CrossAxisAlignment.CENTER,
-
-                            controls=[
-                                ft.Checkbox(
-                                    visible=self.modo_seleccion_multiple,
-                                    value=self.esta_seleccionado(registro),
-                                    on_change=lambda e, r=registro:
-                                        self.toggle_seleccion_multiple(r),
-                                ),
-                                self._area_click_registro(
-                                    registro,
-                                    ft.Row(
-                                        spacing=12,
-                                        expand=True,
-                                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                        controls=[
-                                            ft.Container(
-                                                width=46,
-                                                alignment=ft.Alignment(0, 0),
-                                                content=self.icono_registro(registro),
-                                            ),
-                                            ft.Container(
-                                                expand=True,
-                                                content=ft.Column(
-                                                    spacing=2,
-                                                    controls=[
-                                                        ft.Text(
-                                                            self.titulo_registro(registro),
-                                                            weight=ft.FontWeight.BOLD,
-                                                            size=16,
-                                                            max_lines=1,
-                                                            overflow=ft.TextOverflow.ELLIPSIS,
-                                                        ),
-                                                        self.texto_previsualizacion(
-                                                            registro,
-                                                            size=13,
-                                                            max_lines=2,
-                                                            color=ft.Colors.GREY_700,
-                                                        ),
-                                                    ],
-                                                ),
-                                            ),
-                                            ft.Container(
-                                                width=86,
-                                                alignment=ft.Alignment(1, 0),
-                                                content=ft.Text(
-                                                    self.resultado_registro(registro),
-                                                    size=15,
-                                                    weight=ft.FontWeight.BOLD,
-                                                    max_lines=1,
-                                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                                    text_align=ft.TextAlign.RIGHT,
-                                                ),
-                                            ),
-                                        ],
-                                    ),
+                        spacing=12,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        controls=[
+                            ft.Checkbox(
+                                visible=self.modo_seleccion_multiple,
+                                value=self.esta_seleccionado(registro),
+                                on_change=lambda e, r=registro: self.toggle_seleccion_multiple(r),
+                            ),
+                            self._area_click_registro(
+                                registro,
+                                ft.Row(
+                                    spacing=12,
                                     expand=True,
+                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                    controls=[
+                                        ft.Container(
+                                            width=48,
+                                            height=48,
+                                            alignment=ft.Alignment(0, 0),
+                                            border_radius=10,
+                                            bgcolor=ft.Colors.with_opacity(0.05, VIOLETA_IOS),
+                                            content=self.icono_registro(registro),
+                                        ),
+                                        ft.Container(
+                                            expand=True,
+                                            content=ft.Column(
+                                                tight=True,
+                                                spacing=3,
+                                                controls=[
+                                                    ft.Text(
+                                                        self.titulo_registro(registro),
+                                                        weight=ft.FontWeight.BOLD,
+                                                        size=16,
+                                                        max_lines=1,
+                                                        overflow=ft.TextOverflow.ELLIPSIS,
+                                                    ),
+                                                    self.texto_previsualizacion(
+                                                        registro,
+                                                        size=13,
+                                                        max_lines=1,
+                                                        color=TEXTO_SECUNDARIO,
+                                                    ),
+                                                    ft.Text(
+                                                        f"{self.etiqueta_tipo_registro(registro)} · {self.fecha_corta_registro(registro)}",
+                                                        size=11,
+                                                        color=TEXTO_SECUNDARIO,
+                                                        max_lines=1,
+                                                        overflow=ft.TextOverflow.ELLIPSIS,
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                    ],
                                 ),
-                                self._acciones_registro_inline(registro, compacto=True)
-                            ]
-                        )
+                                expand=True,
+                            ),
+                            ft.TextButton(
+                                "Abrir",
+                                icon=ft.Icons.OPEN_IN_NEW,
+                                on_click=lambda e, r=registro: self.abrir_detalle(r),
+                            ),
+                        ],
+                    ),
                 )
                 for registro in registros
-            ]
-        )                    
+            ],
+        )
                  
     # -------------------------------------------------
     # CAMBIAR VISTA
