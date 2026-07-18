@@ -223,9 +223,7 @@ class InicioView:
             on_click=lambda e: self.sidebar.toggle(),
         )
 
-        # El resultado muestra una sola tarjeta. Debe crecer por contenido,
-        # no ocupar toda la altura disponible de la pantalla.
-        self.resultado_actual = ft.Column(tight=True, spacing=0)
+        self.resultado_actual = ft.Column()
         self.ultimo_registro = None
 
         self.titulo = ft.Text(
@@ -386,7 +384,7 @@ class InicioView:
 
         panel_resultado = self._tarjeta_visual(
             ft.Column(
-                tight=True,
+                expand=not es_movil,
                 spacing=12,
                 controls=[
                     ft.Row(
@@ -401,10 +399,10 @@ class InicioView:
                             ft.Icon(ft.Icons.INSIGHTS, color=VIOLETA_IOS, size=22),
                         ],
                     ),
-                    self.resultado_actual,
+                    ft.Container(expand=not es_movil, content=self.resultado_actual),
                 ],
             ),
-            expand=False,
+            expand=not es_movil,
         )
 
         if es_movil:
