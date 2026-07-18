@@ -1,18 +1,21 @@
 import flet as ft
+
 from ui.clipboard import copiar_al_portapapeles
 from ui.tareas import ejecutar_demorado
 from vistas.detalle import mostrar_detalle
 
+
 def tarjeta_resultado(
-        page,
-        palabra,
-        alfabeto,
-        suma,
-        resultado,
-        texto_boton,
-        funcion,
-        funcion_compartir=None,
-    ):
+    page,
+    palabra,
+    alfabeto,
+    suma,
+    resultado,
+    texto_boton,
+    funcion,
+    funcion_compartir=None,
+):
+    """Muestra una sola tarjeta compacta con las acciones del codificador."""
 
     def ver_detalle(e):
         mostrar_detalle(
@@ -22,172 +25,132 @@ def tarjeta_resultado(
             suma=suma,
             resultado=resultado,
         )
-    # ----------------------------------------------------
-    # Copiar
-    # ----------------------------------------------------
 
     def copiar(e):
-
         texto = (
             f"Palabra: {palabra}\n"
             f"Alfabeto: {alfabeto}\n\n"
             f"{suma}\n\n"
             f"Resultado: {resultado}"
         )
-
         copiar_al_portapapeles(page, texto)
-
         boton_copiar.icon = ft.Icons.CHECK
         boton_copiar.tooltip = "Copiado"
-
         page.snack_bar = ft.SnackBar(
             content=ft.Text("Copiado al portapapeles"),
             duration=1500,
         )
-
         page.snack_bar.open = True
         page.update()
 
         def restaurar():
             boton_copiar.icon = ft.Icons.CONTENT_COPY
             boton_copiar.tooltip = "Copiar"
-
             page.update()
 
         ejecutar_demorado(page, 1.5, restaurar)
-
-    # ----------------------------------------------------
-
-    boton_copiar = ft.IconButton(
-
-        icon=ft.Icons.CONTENT_COPY,
-
-        tooltip="Copiar",
-
-        on_click=copiar,
-
-    )
-
-    # ----------------------------------------------------
 
     ancho = getattr(page, "width", None)
     if ancho is None and hasattr(page, "window"):
         ancho = getattr(page.window, "width", None)
     es_movil = (ancho or 1200) < 560
 
-    boton_detalle = ft.OutlinedButton(
-        "Ver detalle",
-        icon=ft.Icons.VISIBILITY,
-        on_click=ver_detalle,
-        expand=es_movil,
-    )
-    boton_compartir = (
-        ft.OutlinedButton(
-            "Compartir",
-            icon=ft.Icons.SHARE,
-            on_click=funcion_compartir,
-            expand=es_movil,
-        )
-        if funcion_compartir
-        else None
-    )
-    boton_guardar = ft.ElevatedButton(
-        texto_boton,
-        icon=ft.Icons.SAVE,
-        on_click=funcion,
-        expand=es_movil,
+    boton_copiar = ft.IconButton(
+        icon=ft.Icons.CONTENT_COPY,
+        tooltip="Copiar",
+        on_click=copiar,
     )
 
-    if es_movil:
-        fila_primaria = [boton_detalle]
-        if boton_compartir:
-            fila_primaria.append(boton_compartir)
-        botones_accion = ft.Column(
+    def accion(texto, icono, on_click, principal=False):
+        return ft.Container(
+            expand=True,
+            height=42,
+            padding=ft.Padding(left=8, top=0, right=8, bottom=0),
+            alignment=ft.Alignment(0, 0),
+            bgcolor="#6E2A8A" if principal else "#F7EDF9",
+            border=ft.Border.all(1, "#6E2A8A" if principal else "#DCC8E4"),
+            border_radius=14,
+            ink=True,
+            on_click=on_click,
+            content=ft.Row(
+                tight=True,
+                spacing=6,
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(
+                        icono,
+                        size=18,
+                        color="#FFFFFF" if principal else "#6E2A8A",
+                    ),
+                    ft.Text(
+                        texto,
+                        size=13,
+                        weight=ft.FontWeight.BOLD,
+                        color="#FFFFFF" if principal else "#6E2A8A",
+                    ),
+                ],
+            ),
+        )
+
+    acciones = [accion("Detalle", ft.Icons.VISIBILITY, ver_detalle)]
+    if funcion_compartir:
+        acciones.append(accion("Compartir", ft.Icons.SHARE, funcion_compartir))
+    acciones.append(accion(texto_boton, ft.Icons.SAVE, funcion, principal=True))
+
+    if es_movil and len(acciones) == 3:
+        acciones_control = ft.Column(
             tight=True,
             spacing=8,
             controls=[
-                ft.Row(spacing=8, controls=fila_primaria),
-                ft.Row(controls=[boton_guardar]),
+                ft.Row(spacing=8, controls=acciones[:2]),
+                ft.Row(spacing=8, controls=acciones[2:]),
             ],
         )
     else:
-        botones = [boton_detalle]
-        if boton_compartir:
-            botones.append(boton_compartir)
-        botones.append(boton_guardar)
-        botones_accion = ft.Row(
-            spacing=8,
-            wrap=True,
-            run_spacing=8,
-            alignment=ft.MainAxisAlignment.START,
-            controls=botones,
-        )
+        acciones_control = ft.Row(spacing=8, controls=acciones)
 
-    return ft.Card(
-        elevation=4,
-        content=ft.Container(
-            padding=15,
-            content=ft.Column(
-                tight=True,
-                spacing=10,
-                controls=[
-                    # -------------------------
-                    # Encabezado
-                    # -------------------------
+    titulo = (palabra[:60] + "..." if len(palabra) > 60 else palabra)
+    altura_tarjeta = 274 if es_movil else 206
 
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        vertical_alignment=ft.CrossAxisAlignment.START,
-                        controls=[
-                            ft.Container(
-                                expand=True,
-                                content=ft.Text(
-                                    (
-                                        palabra[:60]+"..."
-                                        if len(palabra) > 60
-                                        else palabra
-                                    )
-                                    +
-                                    f"({alfabeto})",
-                                    size=20,
-                                    weight=ft.FontWeight.BOLD,
-                                    max_lines=2,
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-
-                                ),
-
+    return ft.Container(
+        height=altura_tarjeta,
+        padding=15,
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        bgcolor="#FFF7FE",
+        border=ft.Border.all(1, "#E8D9ED"),
+        border_radius=16,
+        shadow=ft.BoxShadow(
+            blur_radius=10,
+            color=ft.Colors.with_opacity(0.10, ft.Colors.BLACK),
+            offset=ft.Offset(0, 3),
+        ),
+        content=ft.Column(
+            tight=True,
+            spacing=10,
+            controls=[
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    controls=[
+                        ft.Container(
+                            expand=True,
+                            content=ft.Text(
+                                f"{titulo}({alfabeto})",
+                                size=20,
+                                weight=ft.FontWeight.BOLD,
+                                max_lines=2,
+                                overflow=ft.TextOverflow.ELLIPSIS,
                             ),
-
-                            boton_copiar,
-
-                        ],
-
-                    ),
-
-                    # -------------------------
-                    # Desarrollo
-                    # -------------------------
-                    # -------------------------
-                    # Información resumida
-                    # -------------------------
-
-                    ft.Text(
-                        f"Resultado: {resultado}",
-                        size=22,
-                        weight=ft.FontWeight.BOLD,
-                    ),
-
-
-                    # -------------------------
-                    # Botones
-                    # -------------------------
-
-                    botones_accion,
-
-                ],
-
-            ),
-
-        ),    
-
+                        ),
+                        boton_copiar,
+                    ],
+                ),
+                ft.Text(
+                    f"Resultado: {resultado}",
+                    size=22,
+                    weight=ft.FontWeight.BOLD,
+                ),
+                acciones_control,
+            ],
+        ),
     )
