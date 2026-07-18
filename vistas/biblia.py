@@ -3646,8 +3646,31 @@ class BibliaView:
     def _crear_flotante_biblia(self, titulo, contenido, acciones, ancho=None, alto=None):
         ancho_page = getattr(self.page, "width", None) or 760
         alto_page = getattr(self.page, "height", None) or 720
+        es_movil = self.responsive.is_mobile()
         ancho_modal = min(ancho or 620, max(300, ancho_page - 32))
-        alto_modal = min(alto or (alto_page - 80), max(320, alto_page - 40))
+        alto_preferido = alto or (alto_page - 80)
+
+        # En celular una fila de acciones se sale del modal. Las apilamos y
+        # reservamos espacio para que cada opcion conserve su ancho legible.
+        if es_movil and len(acciones) > 1:
+            alto_preferido = max(alto_preferido, 220 + len(acciones) * 58)
+
+        alto_modal = min(alto_preferido, max(320, alto_page - 40))
+        acciones_control = (
+            ft.Column(
+                tight=True,
+                spacing=8,
+                horizontal_alignment=ft.CrossAxisAlignment.END,
+                controls=acciones,
+            )
+            if es_movil
+            else ft.Row(
+                alignment=ft.MainAxisAlignment.END,
+                spacing=10,
+                controls=acciones,
+            )
+        )
+
         return ft.Container(
             data="biblia_flotante",
             width=ancho_page,
@@ -3675,11 +3698,7 @@ class BibliaView:
                             alignment=ft.Alignment(0, 0),
                             content=contenido,
                         ),
-                        ft.Row(
-                            alignment=ft.MainAxisAlignment.END,
-                            spacing=10,
-                            controls=acciones,
-                        ),
+                        acciones_control,
                     ],
                 ),
             ),
