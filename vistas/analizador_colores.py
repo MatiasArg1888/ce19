@@ -1,6 +1,4 @@
-import colorsys
 import json
-import math
 
 import flet as ft
 
@@ -13,6 +11,7 @@ from logica.analizador_colores import (
     exportar_json,
     guardar_historial,
     hex_color_puro,
+    mezclar_pigmentos,
 )
 from ui.clipboard import copiar_al_portapapeles
 from ui.nombre_guardado import pedir_nombre_y_carpeta_guardado
@@ -338,29 +337,31 @@ class AnalizadorColoresView:
         )
 
     def actualizar_mezcla_colores(self, e=None):
-        color_a = self._rgb_desde_hex(
-            self._hex_por_nombre(self.mezcla_color_a.value)
-        )
-        color_b = self._rgb_desde_hex(
-            self._hex_por_nombre(self.mezcla_color_b.value)
-        )
-
         if self.mezcla_modo.value == "Luz":
+            color_a = self._rgb_desde_hex(
+                self._hex_por_nombre(self.mezcla_color_a.value)
+            )
+            color_b = self._rgb_desde_hex(
+                self._hex_por_nombre(self.mezcla_color_b.value)
+            )
             resultado = tuple(
                 255 - ((255 - color_a[indice]) * (255 - color_b[indice]) / 255)
                 for indice in range(3)
             )
             modo = "luz"
-        else:
-            resultado = self._mezcla_pigmentos(color_a, color_b)
-            modo = "pigmento"
-
-        nombre_resultado = color_base_mezcla(
-            tuple(
-                max(0, min(255, int(round(canal))))
-                for canal in resultado
+            nombre_resultado = color_base_mezcla(
+                tuple(
+                    max(0, min(255, int(round(canal))))
+                    for canal in resultado
+                )
             )
-        )
+        else:
+            modo = "pigmento"
+            nombre_resultado = mezclar_pigmentos(
+                self.mezcla_color_a.value,
+                self.mezcla_color_b.value,
+            )
+
         hex_resultado = hex_color_puro(nombre_resultado)
         self.mezcla_muestra.bgcolor = hex_resultado
         self.mezcla_texto.value = f"{nombre_resultado} ({modo})"
@@ -370,38 +371,6 @@ class AnalizadorColoresView:
             self.mezcla_texto.update()
         except (RuntimeError, AssertionError):
             pass
-
-    def _mezcla_pigmentos(self, color_a, color_b):
-        hsv_a = colorsys.rgb_to_hsv(
-            color_a[0] / 255,
-            color_a[1] / 255,
-            color_a[2] / 255,
-        )
-        hsv_b = colorsys.rgb_to_hsv(
-            color_b[0] / 255,
-            color_b[1] / 255,
-            color_b[2] / 255,
-        )
-        peso_a = max(hsv_a[1], 0.08)
-        peso_b = max(hsv_b[1], 0.08)
-        x = (
-            math.cos(hsv_a[0] * math.tau) * peso_a
-            + math.cos(hsv_b[0] * math.tau) * peso_b
-        )
-        y = (
-            math.sin(hsv_a[0] * math.tau) * peso_a
-            + math.sin(hsv_b[0] * math.tau) * peso_b
-        )
-
-        if abs(x) < 0.0001 and abs(y) < 0.0001:
-            h = (hsv_a[0] + hsv_b[0]) / 2
-        else:
-            h = (math.atan2(y, x) / math.tau) % 1
-
-        s = min(1, (hsv_a[1] + hsv_b[1]) / 2 * 1.08)
-        v = min(1, (hsv_a[2] + hsv_b[2]) / 2 * 0.94 + 0.05)
-        r, g, b = colorsys.hsv_to_rgb(h, s, v)
-        return (r * 255, g * 255, b * 255)
 
     def limpiar(self, e=None):
         self.texto.value = ""

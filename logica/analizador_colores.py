@@ -33,6 +33,43 @@ COLORES = {
 }
 
 
+# Resultado de mezclar pigmentos de los colores puros disponibles en la app.
+# Se priorizan los tres resultados primarios y se evita promediar RGB/HSV,
+# porque dicho promedio produce tonos que no representan una mezcla de pintura.
+MEZCLAS_PIGMENTOS = {
+    frozenset(("ROJO", "AMARILLO")): "NARANJA",
+    frozenset(("ROJO", "AZUL")): "VIOLETA",
+    frozenset(("AMARILLO", "AZUL")): "VERDE",
+    frozenset(("ROJO", "NARANJA")): "NARANJA",
+    frozenset(("NARANJA", "AMARILLO")): "NARANJA",
+    frozenset(("AMARILLO", "VERDE")): "VERDE",
+    frozenset(("VERDE", "AZUL")): "VERDE",
+    frozenset(("AZUL", "VIOLETA")): "VIOLETA",
+    frozenset(("VIOLETA", "ROJO")): "VIOLETA",
+}
+
+
+def mezclar_pigmentos(nombre_a, nombre_b):
+    """Devuelve el color puro resultante de dos pigmentos de la paleta."""
+    color_a = str(nombre_a or "").upper().strip()
+    color_b = str(nombre_b or "").upper().strip()
+
+    if color_a not in {color["nombre"] for color in COLORES.values()}:
+        return color_b or "MARRON"
+    if color_b not in {color["nombre"] for color in COLORES.values()}:
+        return color_a or "MARRON"
+    if color_a == color_b:
+        return color_a
+
+    mezcla = frozenset((color_a, color_b))
+    if "BLANCO" in mezcla or "GRIS" in mezcla:
+        return next(color for color in mezcla if color not in {"BLANCO", "GRIS"})
+    if "MARRON" in mezcla:
+        return "MARRON"
+
+    return MEZCLAS_PIGMENTOS.get(mezcla, "MARRON")
+
+
 def limpiar_texto(texto):
     texto = texto.upper()
     texto = texto.replace("Ñ", "__ENIE__")
